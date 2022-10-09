@@ -32,7 +32,7 @@ class DDPM:
             eps = torch.randn_like(X0)
         Xt = self.q_sample(X0, t, eps)
         pred_eps = model(Xt, t)
-        return F.mse_loss(pred_eps, eps, reduction='sum') / X0.shape[0]
+        return F.mse_loss(pred_eps, eps)
 
     def q_sample(self, X0: Tensor, t: Tensor, eps: Tensor = None):
         """ Sample from q(Xt | X0)
@@ -73,8 +73,8 @@ class DDPM:
     def sample(self, model: nn.Module, shape: Tuple[int, int, int, int]):
         device = next(model.parameters()).device
         img = torch.randn(shape, device=device)
-        imgs = [img]
+        imgs = [img.cpu()]
         for t in tqdm(range(self.total_steps-1, -1, -1), leave=False, desc='Sampling'):
             img = self.p_sample(model, img, t)
-            imgs.append(img)
+            imgs.append(img.cpu())
         return imgs

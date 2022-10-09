@@ -1,4 +1,5 @@
 import math
+from typing import List
 
 import torch
 from torch import Tensor
@@ -157,14 +158,13 @@ class ResBlock(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self, img_channels: int = 3, img_size: int = 32, dim: int = 64, n_stages: int = 4):
+    def __init__(self, img_channels: int = 3, img_size: int = 32, dim: int = 64, dim_mults: List[int] = (1, 2, 4, 8)):
         super().__init__()
         self.img_channels = img_channels
         self.img_size = img_size
-        self.dim = dim
-        self.n_stages = n_stages
 
-        dims = [dim * (2 ** i) for i in range(n_stages)]
+        n_stages = len(dim_mults)
+        dims = [dim * i for i in dim_mults]
 
         # Time embeddings
         time_embed_dim = dim * 4
@@ -247,12 +247,14 @@ def _test():
     T = torch.arange(10)
     out = unet(X, T)
     print(out.shape)
+    print(sum(p.numel() for p in unet.parameters()))
 
-    unet = UNet(img_channels=1, img_size=256, dim=32, n_stages=6)
+    unet = UNet(img_channels=1, img_size=256, dim=128, dim_mults=[1, 1, 2, 2, 4, 4])
     X = torch.empty((10, 1, 256, 256))
     T = torch.arange(10)
     out = unet(X, T)
     print(out.shape)
+    print(sum(p.numel() for p in unet.parameters()))
 
 
 if __name__ == '__main__':

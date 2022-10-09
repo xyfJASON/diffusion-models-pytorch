@@ -55,7 +55,7 @@ class Trainer:
         # BUILD MODELS AND OPTIMIZERS
         # ====================================================== #
         self.DiffusionModel = models.DDPM(self.config['total_steps'], self.config['beta_schedule_mode'])
-        self.model = UNet(self.img_channels, self.config['img_size'], self.config['dim'], self.config['n_stages'])
+        self.model = UNet(self.img_channels, self.config['img_size'], self.config['dim'], self.config['dim_mults'])
         self.model.to(device=self.device)
         self.optimizer = build_optimizer(self.model.parameters(), cfg=self.config['optimizer'])
         # distributed

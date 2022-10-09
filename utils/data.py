@@ -3,24 +3,26 @@ from torch.utils.data.distributed import DistributedSampler
 import torchvision.transforms as T
 import torchvision.datasets as dset
 
+from datasets.CelebA_HQ import CelebA_HQ
+
 
 def build_dataset(name, dataroot, img_size, split, transforms=None, subset_ids=None):
+    transforms1 = T.Compose([T.Resize((img_size, img_size)), T.ToTensor(), T.Normalize(mean=[0.5], std=[0.5])])
+    transforms3 = T.Compose([T.Resize((img_size, img_size)), T.ToTensor(), T.Normalize(mean=[0.5] * 3, std=[0.5] * 3)])
+
     if name == 'mnist':
         assert split in ['train', 'test'], f'{name} only has train/test split, get {split}.'
-        if transforms is None:
-            transforms = T.Compose([T.Resize((img_size, img_size)), T.ToTensor(), T.Normalize(mean=[0.5], std=[0.5])])
-        dataset = dset.MNIST(root=dataroot, train=(split == 'train'), transform=transforms)
+        dataset = dset.MNIST(root=dataroot, train=(split == 'train'), transform=transforms1 if transforms is None else transforms)
         img_channels = 1
     elif name == 'fashion_mnist':
         assert split in ['train', 'test'], f'{name} only has train/test split, get {split}.'
-        if transforms is None:
-            transforms = T.Compose([T.Resize((img_size, img_size)), T.ToTensor(), T.Normalize(mean=[0.5], std=[0.5])])
-        dataset = dset.FashionMNIST(root=dataroot, train=(split == 'train'), transform=transforms)
+        dataset = dset.FashionMNIST(root=dataroot, train=(split == 'train'), transform=transforms1 if transforms is None else transforms)
         img_channels = 1
     elif name == 'celeba':
-        if transforms is None:
-            transforms = T.Compose([T.Resize((img_size, img_size)), T.ToTensor(), T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])])
-        dataset = dset.CelebA(root=dataroot, split=split, transform=transforms)
+        dataset = dset.CelebA(root=dataroot, split=split, transform=transforms3 if transforms is None else transforms)
+        img_channels = 3
+    elif name == 'celeba-hq':
+        dataset = CelebA_HQ(root=dataroot, split=split, transform=transforms3 if transforms is None else transforms)
         img_channels = 3
     else:
         raise ValueError(f"Dataset {name} is not supported.")

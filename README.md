@@ -16,13 +16,13 @@ Reproduce Diffusion Models with PyTorch.
 For single GPU / CPU, run command:
 
 ```shell
-python train.py
+python train.py --config_path CONFIG_PATH
 ```
 
  For multiple GPUs (e.g. 2 GPUs), run command:
 
 ```shell
-torchrun --nproc_per_node 2 train.py
+torchrun --nproc_per_node 2 train.py --config_path CONFIG_PATH
 ```
 
 
@@ -36,13 +36,13 @@ python generate.py \
     --model_path MODEL_PATH \
     --mode {random,denoise} \
     --save_path SAVE_PATH \
-    --dim DIM \
-    --n_stages N_STAGES \
-    --img_size IMG_SIZE \
-    --total_steps TOTAL_STEPS \
+    [--cpu] \
     [--img_channels IMG_CHANNELS] \
-    [--beta_schedule_mode BETA_SCHEDULE_MODE] \
-    [--cpu]
+    [--img_size IMG_SIZE] \
+    [--dim DIM] \
+    [--dim_mults DIM_MULTS [DIM_MULTS ...]] \
+    [--total_steps TOTAL_STEPS] \
+    [--beta_schedule_mode BETA_SCHEDULE_MODE]
 ```
 
 
@@ -54,4 +54,6 @@ python generate.py \
 ### DDPM
 
 <img src="./assets/ddpm-mnist-random.png" width=30% /> <img src="./assets/ddpm-mnist-denoise.png" width=60% /> 
+
+<img src="./assets/ddpm-celebahq-random.png" width=30% /> <img src="./assets/ddpm-celebahq-denoise.png" width=60% /> 
 

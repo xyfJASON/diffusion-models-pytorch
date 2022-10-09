@@ -11,7 +11,7 @@ from models.modules import UNet
 def generate(args):
     device = torch.device('cuda' if torch.cuda.is_available() and not args.cpu else 'cpu')
     ckpt = torch.load(args.model_path, map_location='cpu')
-    model = UNet(args.img_channels, args.img_size, args.dim, args.n_stages)
+    model = UNet(args.img_channels, args.img_size, args.dim, args.dim_mults)
     model.load_state_dict(ckpt['model'])
     model.to(device=device)
     model.eval()
@@ -33,13 +33,13 @@ def main():
     parser.add_argument('--mode', choices=['random', 'denoise'], required=True, help='generation mode. Options: random, denoise')
     parser.add_argument('--save_path', type=str, required=True, help='path to save the generated result')
     parser.add_argument('--cpu', action='store_true', help='use cpu instead of cuda')
-    # Generator settings
-    parser.add_argument('--dim', type=int, required=True, help='dim of the first stage in unet')
-    parser.add_argument('--n_stages', type=int, required=True, help='number of down/up stages in unet')
-    parser.add_argument('--total_steps', type=int, required=True, help='total steps of diffusion model')
-    parser.add_argument('--img_size', type=int, required=True, help='size of output images')
-    parser.add_argument('--beta_schedule_mode', type=str, default='linear', help='beta schedule')
+    # Model settings
     parser.add_argument('--img_channels', type=int, default=3, help='number of channels of output images')
+    parser.add_argument('--img_size', type=int, default=32, help='size of output images')
+    parser.add_argument('--dim', type=int, default=64, help='dim of the first stage in unet')
+    parser.add_argument('--dim_mults', nargs='+', type=int, default=[1, 2, 4, 8], help='multiplier of dim in each stage')
+    parser.add_argument('--total_steps', type=int, default=1000, help='total steps of diffusion model')
+    parser.add_argument('--beta_schedule_mode', type=str, default='linear', help='beta schedule')
     args = parser.parse_args()
 
     generate(args)
