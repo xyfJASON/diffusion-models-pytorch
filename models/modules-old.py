@@ -63,14 +63,68 @@ def Upsample(in_channels: int, out_channels: int):
         nn.Upsample(scale_factor=2, mode='nearest'),
         nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1),
     )
+    # return nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1)
 
 
 def Downsample(in_channels: int, out_channels: int):
     return nn.Conv2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1)
 
 
+class ConvNormAct(nn.Module):
+    def __init__(self,
+                 in_channels: int,
+                 out_channels: int,
+                 kernel_size: int,
+                 stride: int,
+                 padding: int,
+                 norm: str = None,
+                 activation: str = None,
+                 init_type: str = None,
+                 groups: int = 8):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=True)
+
+        if norm == 'bn':
+            self.norm = nn.BatchNorm2d(out_channels)
+        elif norm == 'gn':
+            self.norm = nn.GroupNorm(groups, out_channels)
+        elif norm is None:
+            self.norm = None
+        else:
+            raise ValueError(f'norm {norm} is not valid.')
+
+        if activation == 'relu':
+            self.activation = nn.ReLU()
+        elif activation == 'leakyrelu':
+            self.activation = nn.LeakyReLU(0.2)
+        elif activation == 'elu':
+            self.activation = nn.ELU()
+        elif activation == 'gelu':
+            self.activation = nn.GELU()
+        elif activation == 'silu':
+            self.activation = nn.SiLU()
+        elif activation == 'tanh':
+            self.activation = nn.Tanh()
+        elif activation == 'sigmoid':
+            self.activation = nn.Sigmoid()
+        elif activation is None:
+            self.activation = None
+        else:
+            raise ValueError(f'activation {activation} is not valid.')
+
+        self.conv.apply(init_weights(init_type))
+
+    def forward(self, X: Tensor):
+        X = self.conv(X)
+        if self.norm:
+            X = self.norm(X)
+        if self.activation:
+            X = self.activation(X)
+        return X
+
+
 class SelfAttentionBlock(nn.Module):
-    def __init__(self, dim: int, n_heads: int = 1, groups: int = 32):
+    def __init__(self, dim: int, n_heads: int = 4, groups: int = 1):
         super().__init__()
         assert dim % n_heads == 0
         self.n_heads = n_heads
@@ -91,27 +145,15 @@ class SelfAttentionBlock(nn.Module):
         attn = torch.bmm(q.permute(0, 2, 1), k).softmax(dim=-1)
         output = torch.bmm(v, attn.permute(0, 2, 1)).view(bs, -1, H, W)
         output = self.proj(output)
-        return output + X
+        return output
 
 
 class ResBlock(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, embed_dim: int, groups: int = 32, dropout: float = 0.1):
+    def __init__(self, in_channels: int, out_channels: int, embed_dim: int, groups: int = 8):
         super().__init__()
-        self.blk1 = nn.Sequential(
-            nn.GroupNorm(groups, in_channels),
-            nn.SiLU(),
-            nn.Conv2d(in_channels, out_channels, 3, stride=1, padding=1),
-        )
-        self.proj = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(embed_dim, out_channels),
-        )
-        self.blk2 = nn.Sequential(
-            nn.GroupNorm(groups, out_channels),
-            nn.SiLU(),
-            nn.Dropout(dropout),
-            nn.Conv2d(out_channels, out_channels, 3, stride=1, padding=1),
-        )
+        self.conv1 = ConvNormAct(in_channels, out_channels, 3, stride=1, padding=1, norm='gn', activation='silu', groups=groups)
+        self.proj = nn.Sequential(nn.SiLU(), nn.Linear(embed_dim, out_channels))
+        self.conv2 = ConvNormAct(out_channels, out_channels, 3, stride=1, padding=1, norm='gn', activation='silu', groups=groups)
         self.shortcut = nn.Conv2d(in_channels, out_channels, 1) if in_channels != out_channels else nn.Identity()
 
     def forward(self, X: Tensor, time_embed: Tensor = None):
@@ -123,24 +165,22 @@ class ResBlock(nn.Module):
             [bs, C', H, W]
         """
         shortcut = self.shortcut(X)
-        X = self.blk1(X)
+        X = self.conv1(X)
         if time_embed is not None:
             X = X + self.proj(time_embed)[:, :, None, None]
-        X = self.blk2(X)
+        X = self.conv2(X)
         return X + shortcut
 
 
 class UNet(nn.Module):
     def __init__(self,
                  img_channels: int = 3,
-                 dim: int = 128,
-                 dim_mults: List[int] = (1, 2, 2, 2),
+                 dim: int = 64,
+                 dim_mults: List[int] = (1, 2, 4, 8),
                  use_attn: List[int] = (False, True, False, False),
-                 num_res_blocks: int = 2,
-                 resblock_groups: int = 32,
-                 attn_groups: int = 32,
-                 attn_heads: int = 1,
-                 dropout: float = 0.1):
+                 resblock_groups: int = 8,
+                 attn_groups: int = 1,
+                 attn_heads: int = 4):
         super().__init__()
         self.img_channels = img_channels
         n_stages = len(dim_mults)
@@ -162,71 +202,59 @@ class UNet(nn.Module):
         # Default: 32x32 -> 16x16 -> 8x8 -> 4x4
         self.down_blocks = nn.ModuleList([])
         for i in range(n_stages):
-            stage_blocks = nn.ModuleList([])
-            for j in range(num_res_blocks):
-                stage_blocks.append(ResBlock(dims[i], dims[i], embed_dim=time_embed_dim, groups=resblock_groups, dropout=dropout))
-                if use_attn[i]:
-                    stage_blocks.append(SelfAttentionBlock(dims[i], n_heads=attn_heads, groups=attn_groups))
-            if i < n_stages - 1:
-                stage_blocks.append(Downsample(dims[i], dims[i+1]))
-            self.down_blocks.append(stage_blocks)
+            self.down_blocks.append(
+                nn.ModuleList([
+                    ResBlock(dims[i], dims[i], embed_dim=time_embed_dim, groups=resblock_groups),
+                    SelfAttentionBlock(dims[i], n_heads=attn_heads, groups=attn_groups) if use_attn[i] else nn.Identity(),
+                    ResBlock(dims[i], dims[i], embed_dim=time_embed_dim, groups=resblock_groups),
+                    Downsample(dims[i], dims[i+1]) if i < n_stages - 1 else nn.Identity(),
+                ])
+            )
 
         # Bottleneck block
         self.bottleneck_block = nn.ModuleList([
-            ResBlock(dims[-1], dims[-1], embed_dim=time_embed_dim, dropout=dropout),
+            ResBlock(dims[-1], dims[-1], embed_dim=time_embed_dim),
             SelfAttentionBlock(dims[-1]),
-            ResBlock(dims[-1], dims[-1], embed_dim=time_embed_dim, dropout=dropout),
+            ResBlock(dims[-1], dims[-1], embed_dim=time_embed_dim),
         ])
 
         # Up-sample blocks
         # Default: 4x4 -> 8x8 -> 16x16 -> 32x32
         self.up_blocks = nn.ModuleList([])
         for i in range(n_stages):
-            stage_blocks = nn.ModuleList([])
-            for j in range(num_res_blocks + 1):
-                stage_blocks.append(ResBlock(dims[i] * 2, dims[i], embed_dim=time_embed_dim, groups=resblock_groups, dropout=dropout))
-                if use_attn[i]:
-                    stage_blocks.append(SelfAttentionBlock(dims[i], n_heads=attn_heads, groups=attn_groups))
-            if i > 0:
-                stage_blocks.append(Upsample(dims[i], dims[i-1]))
-            self.up_blocks.append(stage_blocks)
+            self.up_blocks.append(
+                nn.ModuleList([
+                    ResBlock(dims[i] * 2, dims[i], embed_dim=time_embed_dim, groups=resblock_groups),
+                    SelfAttentionBlock(dims[i], n_heads=attn_heads, groups=attn_groups) if use_attn[i] else nn.Identity(),
+                    ResBlock(dims[i], dims[i], embed_dim=time_embed_dim, groups=resblock_groups),
+                    Upsample(dims[i], dims[i-1]) if i > 0 else nn.Identity(),
+                ])
+            )
 
         # Last convolution
-        self.last_conv = nn.Sequential(
-            nn.GroupNorm(resblock_groups, dim),
-            nn.SiLU(),
-            nn.Conv2d(dim, img_channels, 3, stride=1, padding=1),
-        )
+        self.last_conv = nn.Conv2d(dim, img_channels, 1)
 
     def forward(self, X: Tensor, T: Tensor):
         time_embed = self.time_embed(T)
         X = self.first_conv(X)
-        skips = [X]
 
-        for stage_blocks in self.down_blocks:
-            for blk in stage_blocks:  # noqa
-                if isinstance(blk, ResBlock):
-                    X = blk(X, time_embed)
-                    skips.append(X)
-                elif isinstance(blk, SelfAttentionBlock):
-                    X = blk(X)
-                    skips[-1] = X
-                else:  # Downsample
-                    X = blk(X)
-                    skips.append(X)
+        skips = []
+        for blk1, attn, blk2, down in self.down_blocks:
+            X = blk1(X, time_embed)
+            X = attn(X)
+            X = blk2(X, time_embed)
+            skips.append(X)
+            X = down(X)
 
         X = self.bottleneck_block[0](X, time_embed)
         X = self.bottleneck_block[1](X)
         X = self.bottleneck_block[2](X, time_embed)
 
-        for stage_blocks in reversed(self.up_blocks):
-            for blk in stage_blocks:
-                if isinstance(blk, ResBlock):
-                    X = blk(torch.cat((X, skips.pop()), dim=1), time_embed)
-                elif isinstance(blk, SelfAttentionBlock):
-                    X = blk(X)
-                else:  # Upsample
-                    X = blk(X)
+        for (blk1, attn, blk2, up), skip in zip(reversed(self.up_blocks), reversed(skips)):
+            X = blk1(torch.cat((X, skip), dim=1), time_embed)
+            X = attn(X)
+            X = blk2(X, time_embed)
+            X = up(X)
 
         X = self.last_conv(X)
         return X
@@ -234,7 +262,6 @@ class UNet(nn.Module):
 
 def _test():
     unet = UNet()
-    print(unet)
     X = torch.empty((10, 3, 32, 32))
     T = torch.arange(10)
     out = unet(X, T)
@@ -246,7 +273,6 @@ def _test():
         dim=128,
         dim_mults=[1, 1, 2, 2, 4, 4],
         use_attn=[False, False, False, False, True, False],
-        dropout=0.0,
     )
     X = torch.empty((10, 1, 256, 256))
     T = torch.arange(10)

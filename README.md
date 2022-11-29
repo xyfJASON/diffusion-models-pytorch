@@ -13,36 +13,56 @@ Reproduce Diffusion Models with PyTorch.
 
 ## Training
 
+Edit the configuration file `./configs/config_ddpm.yml`. 
+
 For single GPU / CPU, run command:
 
 ```shell
-python train.py --config_path CONFIG_PATH
+python train.py --cfg ./configs/config_ddpm.yml
 ```
 
- For multiple GPUs (e.g. 2 GPUs), run command:
+ For multiple GPUs, run command:
 
 ```shell
-torchrun --nproc_per_node 2 train.py --config_path CONFIG_PATH
+torchrun --nproc_per_node NUM_GPUS train.py --cfg ./configs/config_ddpm.yml
+```
+
+An experiment directory will be created under `./runs/` for each run.
+
+
+
+## Evaluation
+
+Edit the configuration file `./configs/config_ddpm_test.yml`. 
+
+For single GPU / CPU, run command:
+
+```shell
+python test.py evaluate --cfg ./configs/config_ddpm_test.yml
+```
+
+ For multiple GPUs, run command:
+
+```shell
+torchrun --nproc_per_node NUM_GPUS test.py evaluate --cfg ./configs/config_ddpm_test.yml
 ```
 
 
 
-## Generation
+## Sampling
 
-Run command:
+Edit the configuration file `./configs/config_ddpm_test.yml`. 
+
+To sample random images, run command:
 
 ```shell
-python generate.py \
-    --model_path MODEL_PATH \
-    --mode {random,denoise} \
-    --save_path SAVE_PATH \
-    [--cpu] \
-    [--img_channels IMG_CHANNELS] \
-    [--img_size IMG_SIZE] \
-    [--dim DIM] \
-    [--dim_mults DIM_MULTS [DIM_MULTS ...]] \
-    [--total_steps TOTAL_STEPS] \
-    [--beta_schedule_mode BETA_SCHEDULE_MODE]
+python test.py sample --cfg ./configs/config_ddpm_test.yml
+```
+
+To sample images with denoising process, run command:
+
+```shell
+python test.py sample_denoise --cfg ./configs/config_ddpm_test.yml
 ```
 
 
@@ -53,7 +73,14 @@ python generate.py \
 
 ### DDPM
 
-<img src="./assets/ddpm-mnist-random.png" width=30% /> <img src="./assets/ddpm-mnist-denoise.png" width=60% /> 
+:warning: Didn't get expected FID and IS scores as reported in paper.
 
-<img src="./assets/ddpm-celebahq-random.png" width=30% /> <img src="./assets/ddpm-celebahq-denoise.png" width=60% /> 
+|     Dataset     |   FID   |       IS        |
+| :-------------: | :-----: | :-------------: |
+| CIFAR10 (32x32) | 13.8240 | 8.5805 (0.1623) |
 
+
+
+<img src="./assets/ddpm-mnist-random.png" width=25% /> <img src="./assets/ddpm-mnist-denoise.png" width=65% />
+
+<img src="./assets/ddpm-cifar10-random.png" width=25% /> <img src="./assets/ddpm-cifar10-denoise.png" width=65% />
