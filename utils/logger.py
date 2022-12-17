@@ -7,8 +7,30 @@ from utils.dist import master_only, get_dist_info
 from utils.misc import get_time_str
 
 
+class AverageMeter:
+    def __init__(self):
+        self.val = 0.
+        self.avg = 0.
+        self.sum = 0.
+        self.count = 0
+
+    def reset(self):
+        self.val = 0.
+        self.avg = 0.
+        self.sum = 0.
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+
 class MessageLogger:
-    def __init__(self, log_root: str, use_tensorboard: bool = False):
+    def __init__(self, log_root: str, print_freq: int, use_tensorboard: bool = False):
+        assert isinstance(print_freq, int) and print_freq >= 1
+        self.print_freq = print_freq
         # logging
         self.logger = get_logger(log_file=os.path.join(log_root, 'exp-' + get_time_str() + '.log'))
         # tensorboard
@@ -29,15 +51,13 @@ class MessageLogger:
         if self.tb_logger:
             self.tb_logger.close()
 
-    def track_status(self, name: str, status: Dict, epoch: int, iteration: int = None, n_iters_per_epoch: int = None,
-                     disable_logging: bool = False, disable_tensorboard: bool = False):
-        global_step = iteration + epoch * n_iters_per_epoch if iteration is not None else epoch
+    def track_status(self, name: str, status: Dict, global_step: int, epoch: int, iteration: int = None):
         message = f'[{name}] epoch: {epoch}' + ('' if iteration is None else f', iteration: {iteration}')
         for k, v in status.items():
             message += f', {k}: {v:.6f}'
-            if self.tb_logger and not disable_tensorboard:
+            if self.tb_logger:
                 self.tb_logger.add_scalar(f'{name}/{k}', v, global_step)
-        if not disable_logging:
+        if self.print_freq and (global_step + 1) % self.print_freq == 0:
             self.logger.info(message)
 
 

@@ -1,5 +1,4 @@
 import tqdm
-from typing import Tuple
 
 import torch
 from torch import Tensor
@@ -27,22 +26,38 @@ class DDPM:
                  beta_schedule: str = 'linear',
                  beta_start: float = 0.0001,
                  beta_end: float = 0.02,
-                 objective: str = 'pred_eps'):
+                 objective: str = 'pred_eps',
+                 var_type: str = 'fixed_large'):
         self.total_steps = total_steps
         assert objective in ['pred_eps', 'pred_x0']
+        assert var_type in ['fixed_small', 'fixed_large']
         self.objective = objective
+
         # Define betas, alphas and related terms
         betas = get_beta_schedule(beta_schedule, total_steps, beta_start, beta_end)
         alphas = 1. - betas
-        self.alphas_cumprod = torch.cumprod(alphas, dim=0)
-        alphas_cumprod_prev = torch.cat((torch.ones(1, dtype=torch.float64), self.alphas_cumprod[:-1]))
-        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
-        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - self.alphas_cumprod)
-        self.sqrt_one_div_alphas_cumprod = torch.sqrt(1.0 / self.alphas_cumprod)
-        self.variance = betas * (1. - alphas_cumprod_prev) / (1. - self.alphas_cumprod)
-        self.log_variance = torch.log(self.variance.clamp(min=1e-20))
-        self.mean_coef1 = torch.sqrt(alphas) * (1. - alphas_cumprod_prev) / (1. - self.alphas_cumprod)
-        self.mean_coef2 = torch.sqrt(alphas_cumprod_prev) * betas / (1. - self.alphas_cumprod)
+        alphas_cumprod = torch.cumprod(alphas, dim=0)
+        alphas_cumprod_prev = torch.cat((torch.ones(1, dtype=torch.float64), alphas_cumprod[:-1]))
+
+        # q(Xt | X0)
+        self.sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
+        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod)
+
+        # q(X{t-1} | Xt, X0)
+        self.posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
+        self.posterior_log_variance = torch.log(torch.cat([self.posterior_variance[[1]], self.posterior_variance[1:]]))
+        self.posterior_mean_coef1 = torch.sqrt(alphas_cumprod_prev) * betas / (1. - alphas_cumprod)
+        self.posterior_mean_coef2 = torch.sqrt(alphas) * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
+
+        # p(X{t-1} | Xt)
+        self.sqrt_recip_alphas_cumprod = torch.sqrt(1. / alphas_cumprod)
+        self.sqrt_recipm1_alphas_cumprod = torch.sqrt(1. / alphas_cumprod - 1.)
+        if var_type == 'fixed_small':
+            self.model_variance = self.posterior_variance
+            self.model_log_variance = self.posterior_log_variance
+        else:
+            self.model_variance = betas
+            self.model_log_variance = torch.log(torch.cat([self.posterior_variance[[1]], betas[1:]]))
 
     @staticmethod
     def _extract(a: Tensor, t: Tensor):
@@ -80,8 +95,21 @@ class DDPM:
         std = self._extract(self.sqrt_one_minus_alphas_cumprod, t)
         return mean + std * eps
 
-    def p_mean_variance(self, model: nn.Module, Xt: Tensor, t: Tensor, clip_denoised: bool = True):
+    def q_posterior_mean_variance(self, X0: Tensor, Xt: Tensor, t: Tensor):
+        """ Compute mean and variance of q(X{t-1} | Xt, X0)
+        Args:
+            X0 (Tensor): [bs, C, H, W]
+            Xt (Tensor): [bs, C, H, W]
+            t (Tensor): [bs], time steps for each sample in X0 and Xt
         """
+        mean_t = (self._extract(self.posterior_mean_coef1, t) * X0 +
+                  self._extract(self.posterior_mean_coef2, t) * Xt)
+        var_t = self._extract(self.posterior_variance, t)
+        log_var_t = self._extract(self.posterior_log_variance, t)
+        return mean_t, var_t, log_var_t
+
+    def p_mean_variance(self, model: nn.Module, Xt: Tensor, t: Tensor, clip_denoised: bool = True):
+        """ Compute mean and variance of p(X{t-1} | Xt)
         Args:
             model (nn.Module): UNet model
             Xt (Tensor): [bs, C, H, W]
@@ -90,16 +118,19 @@ class DDPM:
         """
         if self.objective == 'pred_eps':
             pred_eps = model(Xt, t)
-            pred_X0 = (self._extract(self.sqrt_one_div_alphas_cumprod, t) *
-                       (Xt - self._extract(self.sqrt_one_minus_alphas_cumprod, t) * pred_eps))
+            pred_X0 = self._pred_X0_from_eps(Xt, t, pred_eps)
         else:
             pred_X0 = model(Xt, t)
         if clip_denoised:
             pred_X0.clamp_(-1., 1.)
-        pred_mu = self._extract(self.mean_coef1, t) * Xt + self._extract(self.mean_coef2, t) * pred_X0
-        var_t = self._extract(self.variance, t)
-        log_var_t = self._extract(self.log_variance, t)
-        return pred_mu, var_t, log_var_t
+        mean_t, var_t, log_var_t = self.q_posterior_mean_variance(pred_X0, Xt, t)
+        var_t = self._extract(self.model_variance, t)
+        log_var_t = self._extract(self.model_log_variance, t)
+        return mean_t, var_t, log_var_t
+
+    def _pred_X0_from_eps(self, Xt: Tensor, t: Tensor, eps: Tensor):
+        return (self._extract(self.sqrt_recip_alphas_cumprod, t) * Xt -
+                self._extract(self.sqrt_recipm1_alphas_cumprod, t) * eps)
 
     @torch.no_grad()
     def p_sample(self, model: nn.Module, Xt: Tensor, t: int, clip_denoised: bool = True):
@@ -111,28 +142,25 @@ class DDPM:
             clip_denoised (bool): whether to clip predicted X0 to range [-1, 1]
         """
         t_batch = torch.full((Xt.shape[0], ), t, device=Xt.device, dtype=torch.long)
-        mu_t, _, log_var_t = self.p_mean_variance(model, Xt, t_batch, clip_denoised)
+        mean_t, _, log_var_t = self.p_mean_variance(model, Xt, t_batch, clip_denoised)
         if t == 0:
-            return mu_t
-        return mu_t + torch.exp(0.5 * log_var_t) * torch.randn_like(Xt)
+            return mean_t
+        return mean_t + torch.exp(0.5 * log_var_t) * torch.randn_like(Xt)
 
     @torch.no_grad()
     def sample(self,
                model: nn.Module,
-               shape: Tuple[int, int, int, int],
+               init_noise: Tensor,
                clip_denoised: bool = True,
-               same_XT: bool = False,
-               return_all: bool = False,
-               with_tqdm: bool = False):
-        device = next(model.parameters()).device
-        if not same_XT:
-            img = torch.randn(shape, device=device)
-        else:
-            img = torch.randn((1, *shape[1:]), device=device).repeat(shape[0], 1, 1, 1)
-        imgs = [img.cpu()] if return_all else []
+               return_freq: int = 0,
+               with_tqdm: bool = False,
+               **kwargs):
+        img = init_noise
+        imgs = [img.cpu()] if return_freq else []
 
-        for t in tqdm.tqdm(range(self.total_steps-1, -1, -1), desc='Sampling', ncols=120, disable=not with_tqdm):
+        kwargs['disable'] = kwargs.get('disable', False) or (not with_tqdm)
+        for t in tqdm.tqdm(range(self.total_steps-1, -1, -1), **kwargs):
             img = self.p_sample(model, img, t, clip_denoised)
-            if return_all:
+            if return_freq > 0 and (self.total_steps - t) % return_freq == 0:
                 imgs.append(img.cpu())
-        return imgs if return_all else img.cpu()
+        return imgs if return_freq else img.cpu()

@@ -50,18 +50,8 @@ def parse_config(config_path, args=None):
     return config
 
 
-def check_freq_epoch(freq: int, epoch: int):
-    if freq is None or freq == 0 or not freq >= 1:
-        return False
-    assert isinstance(freq, int), f'freq >= 1 should be an integer, get {freq}'
-    return (epoch + 1) % freq == 0
-
-
-def check_freq_iteration(freq: float, iteration: int, n_iter_per_epochs: int):
-    if freq is None or freq == 0 or not 0. < freq < 1.:
-        return False
-    freq_iter = int(freq * n_iter_per_epochs)
-    return freq_iter > 0 and (iteration + 1) % freq_iter == 0
+def check_freq(freq: int, step: int):
+    return isinstance(freq, int) and freq >= 1 and (step + 1) % freq == 0
 
 
 def get_time_str():

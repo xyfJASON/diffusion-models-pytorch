@@ -5,7 +5,6 @@ from torch.utils.data import Dataset
 
 class ImageDir(Dataset):
     def __init__(self, root, split='train', transform=None):
-        assert split in ['train', 'val', 'valid', 'test']
         root = os.path.join(os.path.expanduser(root), split)
         assert os.path.isdir(root), f'{root} is not a valid directory'
 

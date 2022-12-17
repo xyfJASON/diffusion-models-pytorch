@@ -1,0 +1,63 @@
+data:
+  dataset: MNIST
+  dataroot: /data/MNIST/
+  img_size: 32
+
+
+model:
+  # UNet
+  dim: 64
+  dim_mults: [1, 2, 2, 2]
+  use_attn: [false, true, false, false]
+  num_res_blocks: 2
+  resblock_groups: 32
+  attn_groups: 32
+  attn_heads: 1
+  dropout: 0.1
+  ema_decay: 0.9999
+
+  # DDPM
+  total_steps: 200
+  beta_schedule: linear
+  beta_start: 0.0001
+  beta_end: 0.02
+  objective: pred_eps
+  var_type: fixed_small
+
+
+train:
+  epochs: 200
+  batch_size: 128
+  n_samples: 64
+
+  pretrained: ~
+  resume: ~
+
+  optimizer:
+    type: adam
+    lr: 0.0002
+
+  use_tensorboard: true
+  print_freq: { by_step: 300 }
+  sample_freq: { by_epoch: 10 }
+  save_freq: { by_epoch: 50 }
+
+
+test:
+  pretrained: ./runs/ddpm-mnist/model.pt
+  load_ema: true
+
+  evaluate:
+    num_real: 50000
+    generated_samples: ./samples/ddpm-mnist/random/
+
+  sample:
+    n_samples: 64
+    batch_size: 64
+    save_dir: ./samples/ddpm-mnist/random/
+
+  sample_denoise:
+    n_samples: 8
+    batch_size: 8
+    return_freq: 10
+    save_dir: ./samples/ddpm-mnist/denoise/

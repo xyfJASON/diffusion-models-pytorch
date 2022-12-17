@@ -39,18 +39,18 @@ def init_weights(init_type=None, gain=0.02):
 
 
 class SinusoidalPosEmb(nn.Module):
-    def __init__(self, embed_dim: int):
+    def __init__(self, dim: int):
         super().__init__()
-        self.embed_dim = embed_dim
+        self.dim = dim
 
     def forward(self, X: Tensor):
         """
         Args:
             X (Tensor): [bs]
         Returns:
-            Sinusoidal embeddings of shape [bs, embed_dim]
+            Sinusoidal embeddings of shape [bs, dim]
         """
-        half_dim = self.embed_dim // 2
+        half_dim = self.dim // 2
         embed = math.log(10000) / (half_dim - 1)
         embed = torch.exp(torch.arange(half_dim, device=X.device) * -embed)
         embed = X[:, None] * embed[None, :]
@@ -66,7 +66,7 @@ def Upsample(in_channels: int, out_channels: int):
 
 
 def Downsample(in_channels: int, out_channels: int):
-    return nn.Conv2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1)
+    return nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1)
 
 
 class SelfAttentionBlock(nn.Module):
@@ -75,9 +75,9 @@ class SelfAttentionBlock(nn.Module):
         assert dim % n_heads == 0
         self.n_heads = n_heads
         self.norm = nn.GroupNorm(groups, dim)
-        self.q = nn.Conv2d(dim, dim, kernel_size=1, bias=False)
-        self.k = nn.Conv2d(dim, dim, kernel_size=1, bias=False)
-        self.v = nn.Conv2d(dim, dim, kernel_size=1, bias=False)
+        self.q = nn.Conv2d(dim, dim, kernel_size=1)
+        self.k = nn.Conv2d(dim, dim, kernel_size=1)
+        self.v = nn.Conv2d(dim, dim, kernel_size=1)
         self.proj = nn.Conv2d(dim, dim, kernel_size=1)
         self.scale = (dim // n_heads) ** -0.5
 
@@ -144,58 +144,67 @@ class UNet(nn.Module):
         super().__init__()
         self.img_channels = img_channels
         n_stages = len(dim_mults)
-        dims = [dim * i for i in dim_mults]
+        dims = [dim]
 
         # Time embeddings
         time_embed_dim = dim * 4
         self.time_embed = nn.Sequential(
-            SinusoidalPosEmb(time_embed_dim),
-            nn.Linear(time_embed_dim, time_embed_dim),
+            SinusoidalPosEmb(dim),
+            nn.Linear(dim, time_embed_dim),
             nn.SiLU(),
             nn.Linear(time_embed_dim, time_embed_dim),
         )
 
         # First convolution
-        self.first_conv = nn.Conv2d(img_channels, dim, 5, stride=1, padding=2)
+        self.first_conv = nn.Conv2d(img_channels, dim, 3, stride=1, padding=1)
+        cur_dim = dim
 
         # Down-sample blocks
         # Default: 32x32 -> 16x16 -> 8x8 -> 4x4
         self.down_blocks = nn.ModuleList([])
         for i in range(n_stages):
+            out_dim = dim * dim_mults[i]
             stage_blocks = nn.ModuleList([])
             for j in range(num_res_blocks):
-                stage_blocks.append(ResBlock(dims[i], dims[i], embed_dim=time_embed_dim, groups=resblock_groups, dropout=dropout))
+                stage_blocks.append(ResBlock(cur_dim, out_dim, embed_dim=time_embed_dim,
+                                             groups=resblock_groups, dropout=dropout))
                 if use_attn[i]:
-                    stage_blocks.append(SelfAttentionBlock(dims[i], n_heads=attn_heads, groups=attn_groups))
+                    stage_blocks.append(SelfAttentionBlock(out_dim, n_heads=attn_heads, groups=attn_groups))
+                dims.append(out_dim)
+                cur_dim = out_dim
             if i < n_stages - 1:
-                stage_blocks.append(Downsample(dims[i], dims[i+1]))
+                stage_blocks.append(Downsample(out_dim, out_dim))
+                dims.append(out_dim)
             self.down_blocks.append(stage_blocks)
 
         # Bottleneck block
         self.bottleneck_block = nn.ModuleList([
-            ResBlock(dims[-1], dims[-1], embed_dim=time_embed_dim, dropout=dropout),
-            SelfAttentionBlock(dims[-1]),
-            ResBlock(dims[-1], dims[-1], embed_dim=time_embed_dim, dropout=dropout),
+            ResBlock(cur_dim, cur_dim, embed_dim=time_embed_dim, dropout=dropout),
+            SelfAttentionBlock(cur_dim),
+            ResBlock(cur_dim, cur_dim, embed_dim=time_embed_dim, dropout=dropout),
         ])
 
         # Up-sample blocks
         # Default: 4x4 -> 8x8 -> 16x16 -> 32x32
         self.up_blocks = nn.ModuleList([])
-        for i in range(n_stages):
+        for i in range(n_stages-1, -1, -1):
+            out_dim = dim * dim_mults[i]
             stage_blocks = nn.ModuleList([])
             for j in range(num_res_blocks + 1):
-                stage_blocks.append(ResBlock(dims[i] * 2, dims[i], embed_dim=time_embed_dim, groups=resblock_groups, dropout=dropout))
+                stage_blocks.append(ResBlock(dims.pop() + cur_dim, out_dim, embed_dim=time_embed_dim,
+                                             groups=resblock_groups, dropout=dropout))
                 if use_attn[i]:
-                    stage_blocks.append(SelfAttentionBlock(dims[i], n_heads=attn_heads, groups=attn_groups))
+                    stage_blocks.append(SelfAttentionBlock(out_dim, n_heads=attn_heads, groups=attn_groups))
+                cur_dim = out_dim
             if i > 0:
-                stage_blocks.append(Upsample(dims[i], dims[i-1]))
+                stage_blocks.append(Upsample(out_dim, out_dim))
             self.up_blocks.append(stage_blocks)
 
         # Last convolution
         self.last_conv = nn.Sequential(
-            nn.GroupNorm(resblock_groups, dim),
+            nn.GroupNorm(resblock_groups, cur_dim),
             nn.SiLU(),
-            nn.Conv2d(dim, img_channels, 3, stride=1, padding=1),
+            nn.Conv2d(cur_dim, img_channels, 3, stride=1, padding=1),
         )
 
     def forward(self, X: Tensor, T: Tensor):
@@ -219,8 +228,8 @@ class UNet(nn.Module):
         X = self.bottleneck_block[1](X)
         X = self.bottleneck_block[2](X, time_embed)
 
-        for stage_blocks in reversed(self.up_blocks):
-            for blk in stage_blocks:
+        for stage_blocks in self.up_blocks:
+            for blk in stage_blocks:  # noqa
                 if isinstance(blk, ResBlock):
                     X = blk(torch.cat((X, skips.pop()), dim=1), time_embed)
                 elif isinstance(blk, SelfAttentionBlock):

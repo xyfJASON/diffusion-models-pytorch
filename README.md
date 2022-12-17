@@ -13,57 +13,59 @@ Reproduce Diffusion Models with PyTorch.
 
 ## Training
 
-Edit the configuration file `./configs/config_ddpm.yml`. 
+1. Edit the configuration file `./configs/config_ddpm.yml`.
 
-For single GPU / CPU, run command:
+2. Run command:
 
-```shell
-python train.py --cfg ./configs/config_ddpm.yml
-```
+   ```shell
+   # For single GPU/CPU
+   python train.py --cfg ./configs/config_ddpm.yml
+   # For multiple GPUs
+   torchrun --nproc_per_node NUM_GPUS train.py --cfg ./configs/config_ddpm.yml
+   ```
 
- For multiple GPUs, run command:
-
-```shell
-torchrun --nproc_per_node NUM_GPUS train.py --cfg ./configs/config_ddpm.yml
-```
-
-An experiment directory will be created under `./runs/` for each run.
-
-
-
-## Evaluation
-
-Edit the configuration file `./configs/config_ddpm_test.yml`. 
-
-For single GPU / CPU, run command:
-
-```shell
-python test.py evaluate --cfg ./configs/config_ddpm_test.yml
-```
-
- For multiple GPUs, run command:
-
-```shell
-torchrun --nproc_per_node NUM_GPUS test.py evaluate --cfg ./configs/config_ddpm_test.yml
-```
+   An experiment directory will be created under `./runs/` for each run.
 
 
 
 ## Sampling
 
-Edit the configuration file `./configs/config_ddpm_test.yml`. 
+1. Edit the configuration file `./configs/config_ddpm.yml`. 
 
-To sample random images, run command:
+2. To sample random images, run command:
 
-```shell
-python test.py sample --cfg ./configs/config_ddpm_test.yml
-```
+   ```shell
+   # For single GPU/CPU
+   python test.py sample --cfg ./configs/config_ddpm.yml
+   # For multiple GPUs
+   torchrun --nproc_per_node NUM_GPUS test.py sample --cfg ./configs/config_ddpm.yml
+   ```
 
-To sample images with denoising process, run command:
+3. To sample images with denoising process, run command:
 
-```shell
-python test.py sample_denoise --cfg ./configs/config_ddpm_test.yml
-```
+   ```shell
+   # For single GPU/CPU
+   python test.py sample_denoise --cfg ./configs/config_ddpm.yml
+   # For multiple GPUs
+   torchrun --nproc_per_node NUM_GPUS test.py sample_denoise --cfg ./configs/config_ddpm.yml
+   ```
+
+
+
+## Evaluation
+
+1. Sample random images (around 10k~50k images)
+
+2. Edit the configuration file `./configs/config_ddpm.yml`. 
+
+3. Run command:
+
+   ```shell
+   # For single GPU/CPU
+   python test.py evaluate --cfg ./configs/config_ddpm.yml
+   # For multiple GPUs
+   torchrun --nproc_per_node NUM_GPUS test.py evaluate --cfg ./configs/config_ddpm.yml
+   ```
 
 
 
@@ -73,14 +75,30 @@ python test.py sample_denoise --cfg ./configs/config_ddpm_test.yml
 
 ### DDPM
 
-:warning: Didn't get expected FID and IS scores as reported in paper.
+**Quantitative results:**
 
-|     Dataset     |   FID   |       IS        |
-| :-------------: | :-----: | :-------------: |
-| CIFAR10 (32x32) | 13.8240 | 8.5805 (0.1623) |
+|     Dataset     |  FID   |       IS        |
+| :-------------: | :----: | :-------------: |
+| CIFAR10 (32x32) | 3.1246 | 9.3690 (0.1015) |
 
+**Qualitative results**:
 
+<table width=100%>
+  <tr>
+    <th width=10% align="center">Dataset</th>
+    <th width=40% align="center">MNIST</th>
+    <th width=40% align="center">CIFAR-10</th>
+  </tr>
+  <tr>
+    <th align="center">Random samples</th>
+    <td align="center"><img src="./assets/ddpm-mnist-random.png"/></td>
+    <td align="center"><img src="./assets/ddpm-cifar10-random.png"/></td>
+  </tr>
+  <tr>
+    <th align="center">Denoising process</th>
+    <td align="center"><img src="./assets/ddpm-mnist-denoise.png"/></td>
+    <td align="center"><img src="./assets/ddpm-cifar10-denoise.png"/></td>
+  </tr>
+ </table>
 
-<img src="./assets/ddpm-mnist-random.png" width=25% /> <img src="./assets/ddpm-mnist-denoise.png" width=65% />
-
-<img src="./assets/ddpm-cifar10-random.png" width=25% /> <img src="./assets/ddpm-cifar10-denoise.png" width=65% />
+ 
