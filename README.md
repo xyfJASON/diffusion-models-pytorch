@@ -11,61 +11,11 @@ Reproduce Diffusion Models with PyTorch.
 
 
 
-## Training
+## Docs
 
-1. Edit the configuration file `./configs/config_ddpm.yml`.
+Things about how to run the code.
 
-2. Run command:
-
-   ```shell
-   # For single GPU/CPU
-   python train.py --cfg ./configs/config_ddpm.yml
-   # For multiple GPUs
-   torchrun --nproc_per_node NUM_GPUS train.py --cfg ./configs/config_ddpm.yml
-   ```
-
-   An experiment directory will be created under `./runs/` for each run.
-
-
-
-## Sampling
-
-1. Edit the configuration file `./configs/config_ddpm.yml`. 
-
-2. To sample random images, run command:
-
-   ```shell
-   # For single GPU/CPU
-   python test.py sample --cfg ./configs/config_ddpm.yml
-   # For multiple GPUs
-   torchrun --nproc_per_node NUM_GPUS test.py sample --cfg ./configs/config_ddpm.yml
-   ```
-
-3. To sample images with denoising process, run command:
-
-   ```shell
-   # For single GPU/CPU
-   python test.py sample_denoise --cfg ./configs/config_ddpm.yml
-   # For multiple GPUs
-   torchrun --nproc_per_node NUM_GPUS test.py sample_denoise --cfg ./configs/config_ddpm.yml
-   ```
-
-
-
-## Evaluation
-
-1. Sample random images (around 10k~50k images)
-
-2. Edit the configuration file `./configs/config_ddpm.yml`. 
-
-3. Run command:
-
-   ```shell
-   # For single GPU/CPU
-   python test.py evaluate --cfg ./configs/config_ddpm.yml
-   # For multiple GPUs
-   torchrun --nproc_per_node NUM_GPUS test.py evaluate --cfg ./configs/config_ddpm.yml
-   ```
+- [DDPM](./docs/DDPM.md)
 
 
 
@@ -77,9 +27,41 @@ Reproduce Diffusion Models with PyTorch.
 
 **Quantitative results:**
 
-|     Dataset     |  FID   |       IS        |
-| :-------------: | :----: | :-------------: |
-| CIFAR10 (32x32) | 3.1246 | 9.3690 (0.1015) |
+<table width=100%>
+  <tr>
+    <th align="center">Dataset</th>
+    <th align="center">notes</th>
+    <th align="center">FID</th>
+    <th align="center">IS</th>
+  </tr>
+  <tr>
+    <th align="center" rowspan="5">CIFAR-10 (32x32)</th>
+    <td align="center">fixed_large</td>
+    <td align="center">3.1246</td>
+    <td align="center">9.3690 (0.1015)</td>
+  </tr>
+  <tr>
+    <td align="center">fixed_small</td>
+    <td align="center">5.3026</td>
+    <td align="center">8.9711 (0.1172)</td>
+  </tr>
+  <tr>
+    <td align="center">100 timesteps (10x faster)<br/>fixed_small</td>
+    <td align="center">11.1331</td>
+    <td align="center">8.5436 (0.1291)</td>
+  </tr>
+  <tr>
+    <td align="center">50 timesteps (20x faster)<br/>fixed_small</td>
+    <td align="center">15.5682</td>
+    <td align="center">8.3658 (0.0665)</td>
+  </tr>
+  <tr>
+    <td align="center">10 timesteps (100x faster)<br/>fixed_small</td>
+    <td align="center">40.8977</td>
+    <td align="center"> 7.1148 (0.0824)</td>
+  </tr>
+ </table>
+
 
 **Qualitative results**:
 
@@ -100,5 +82,3 @@ Reproduce Diffusion Models with PyTorch.
     <td align="center"><img src="./assets/ddpm-cifar10-denoise.png"/></td>
   </tr>
  </table>
-
- 

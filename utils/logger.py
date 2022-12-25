@@ -4,7 +4,6 @@ import logging
 from typing import Dict
 
 from utils.dist import master_only, get_dist_info
-from utils.misc import get_time_str
 
 
 class AverageMeter:
@@ -28,15 +27,19 @@ class AverageMeter:
 
 
 class MessageLogger:
-    def __init__(self, log_root: str, print_freq: int, use_tensorboard: bool = False):
-        assert isinstance(print_freq, int) and print_freq >= 1
+    def __init__(self, log_root: str = None, print_freq: int = 0):
+        assert isinstance(print_freq, int) and print_freq >= 0
         self.print_freq = print_freq
         # logging
-        self.logger = get_logger(log_file=os.path.join(log_root, 'exp-' + get_time_str() + '.log'))
+        if log_root is not None:
+            self.logger = get_logger(log_file=os.path.join(log_root, 'output.log'))
+        else:
+            self.logger = get_logger()
         # tensorboard
-        self.tb_logger = None
-        if use_tensorboard:
+        if log_root is not None:
             self.tb_logger = get_tb_writer(log_dir=os.path.join(log_root, 'tensorboard'))
+        else:
+            self.tb_logger = None
 
     def info(self, msg: str, *args, **kwargs):
         self.logger.info(msg, *args, **kwargs)

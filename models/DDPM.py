@@ -1,4 +1,5 @@
 import tqdm
+from typing import List
 
 import torch
 from torch import Tensor
@@ -36,28 +37,28 @@ class DDPM:
         # Define betas, alphas and related terms
         betas = get_beta_schedule(beta_schedule, total_steps, beta_start, beta_end)
         alphas = 1. - betas
-        alphas_cumprod = torch.cumprod(alphas, dim=0)
-        alphas_cumprod_prev = torch.cat((torch.ones(1, dtype=torch.float64), alphas_cumprod[:-1]))
+        self.alphas_cumprod = torch.cumprod(alphas, dim=0)
+        self.alphas_cumprod_prev = torch.cat((torch.ones(1, dtype=torch.float64), self.alphas_cumprod[:-1]))
 
         # q(Xt | X0)
-        self.sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
-        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod)
+        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
+        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - self.alphas_cumprod)
 
         # q(X{t-1} | Xt, X0)
-        self.posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
+        self.posterior_variance = betas * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
         self.posterior_log_variance = torch.log(torch.cat([self.posterior_variance[[1]], self.posterior_variance[1:]]))
-        self.posterior_mean_coef1 = torch.sqrt(alphas_cumprod_prev) * betas / (1. - alphas_cumprod)
-        self.posterior_mean_coef2 = torch.sqrt(alphas) * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
+        self.posterior_mean_coef1 = torch.sqrt(self.alphas_cumprod_prev) * betas / (1. - self.alphas_cumprod)
+        self.posterior_mean_coef2 = torch.sqrt(alphas) * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
 
         # p(X{t-1} | Xt)
-        self.sqrt_recip_alphas_cumprod = torch.sqrt(1. / alphas_cumprod)
-        self.sqrt_recipm1_alphas_cumprod = torch.sqrt(1. / alphas_cumprod - 1.)
+        self.sqrt_recip_alphas_cumprod = torch.sqrt(1. / self.alphas_cumprod)
+        self.sqrt_recipm1_alphas_cumprod = torch.sqrt(1. / self.alphas_cumprod - 1.)
         if var_type == 'fixed_small':
             self.model_variance = self.posterior_variance
             self.model_log_variance = self.posterior_log_variance
         else:
             self.model_variance = betas
-            self.model_log_variance = torch.log(torch.cat([self.posterior_variance[[1]], betas[1:]]))
+            self.model_log_variance = torch.log(betas)
 
     @staticmethod
     def _extract(a: Tensor, t: Tensor):
@@ -164,3 +165,69 @@ class DDPM:
             if return_freq > 0 and (self.total_steps - t) % return_freq == 0:
                 imgs.append(img.cpu())
         return imgs if return_freq else img.cpu()
+
+
+class DDPMSkip(DDPM):
+    def __init__(self, timesteps: List[int] or Tensor, **kwargs):
+        self.timesteps = timesteps
+
+        # Initialize the original DDPM
+        super().__init__(**kwargs)
+
+        # Define new beta sequence
+        betas = []
+        last_alphas_cumprod = 1.
+        for t in timesteps:
+            betas.append(1 - self.alphas_cumprod[t] / last_alphas_cumprod)
+            last_alphas_cumprod = self.alphas_cumprod[t]
+        betas = torch.tensor(betas)
+        self.total_steps = len(betas)
+
+        # Reinitialize other parameters based on new betas (directly copied from DDPM)
+        alphas = 1. - betas
+        self.alphas_cumprod = torch.cumprod(alphas, dim=0)
+        self.alphas_cumprod_prev = torch.cat((torch.ones(1, dtype=torch.float64), self.alphas_cumprod[:-1]))
+
+        # q(Xt | X0)
+        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
+        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - self.alphas_cumprod)
+
+        # q(X{t-1} | Xt, X0)
+        self.posterior_variance = betas * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
+        self.posterior_log_variance = torch.log(torch.cat([self.posterior_variance[[1]], self.posterior_variance[1:]]))
+        self.posterior_mean_coef1 = torch.sqrt(self.alphas_cumprod_prev) * betas / (1. - self.alphas_cumprod)
+        self.posterior_mean_coef2 = torch.sqrt(alphas) * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
+
+        # p(X{t-1} | Xt)
+        self.sqrt_recip_alphas_cumprod = torch.sqrt(1. / self.alphas_cumprod)
+        self.sqrt_recipm1_alphas_cumprod = torch.sqrt(1. / self.alphas_cumprod - 1.)
+        if kwargs['var_type'] == 'fixed_small':
+            self.model_variance = self.posterior_variance
+            self.model_log_variance = self.posterior_log_variance
+        else:
+            self.model_variance = betas
+            self.model_log_variance = torch.log(betas)
+
+    def p_mean_variance(self, model: nn.Module, *args, **kwargs):
+        return super().p_mean_variance(self._wrap_model(model), *args, **kwargs)  # noqa
+
+    def loss_func(self, model: nn.Module, *args, **kwargs):
+        return super().loss_func(self._wrap_model(model), *args, **kwargs)  # noqa
+
+    def _wrap_model(self, model: nn.Module):
+        if isinstance(model, _WrappedModel):
+            return model
+        return _WrappedModel(model, self.timesteps)
+
+
+class _WrappedModel:
+    def __init__(self, model: nn.Module, timesteps: List[int] or Tensor):
+        self.model = model
+        self.timesteps = timesteps
+        if isinstance(timesteps, list):
+            self.timesteps = torch.tensor(timesteps)
+
+    def __call__(self, X: Tensor, t: Tensor):
+        self.timesteps = self.timesteps.to(t.device)
+        ts = self.timesteps[t]
+        return self.model(X, ts)

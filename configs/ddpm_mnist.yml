@@ -2,6 +2,7 @@ data:
   dataset: MNIST
   dataroot: /data/MNIST/
   img_size: 32
+  img_channels: 1
 
 
 model:
@@ -37,27 +38,37 @@ train:
     type: adam
     lr: 0.0002
 
-  use_tensorboard: true
   print_freq: { by_step: 300 }
   sample_freq: { by_epoch: 10 }
   save_freq: { by_epoch: 50 }
 
 
-test:
-  pretrained: ./runs/ddpm-mnist/model.pt
+sample:
+  model_path: ./runs/ddpm-mnist/model.pt
   load_ema: true
+  n_samples: 64
+  batch_size: 64
+  save_dir: ./samples/ddpm-mnist/random/
 
-  evaluate:
-    num_real: 50000
-    generated_samples: ./samples/ddpm-mnist/random/
 
-  sample:
-    n_samples: 64
-    batch_size: 64
-    save_dir: ./samples/ddpm-mnist/random/
+sample_denoise:
+  model_path: ./runs/ddpm-mnist/model.pt
+  load_ema: true
+  n_samples: 8
+  batch_size: 8
+  return_freq: 10
+  save_dir: ./samples/ddpm-mnist/denoise/
 
-  sample_denoise:
-    n_samples: 8
-    batch_size: 8
-    return_freq: 10
-    save_dir: ./samples/ddpm-mnist/denoise/
+
+sample_skip:
+  model_path: ./runs/ddpm-mnist/model.pt
+  load_ema: true
+  n_samples: 64
+  batch_size: 64
+  n_timesteps: 100
+  save_dir: ./samples/ddpm-mnist/random-100steps/
+
+
+evaluate:
+  num_real: 50000
+  generated_samples: ./samples/ddpm-mnist/random/

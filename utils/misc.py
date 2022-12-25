@@ -1,15 +1,11 @@
-import os
-import yaml
 import random
-import shutil
 import datetime
+import argparse
 import numpy as np
 
 import torch
 import torch.nn as nn
 from torch.backends import cudnn
-
-from utils.dist import master_only
 
 
 def init_seeds(seed=0, cuda_deterministic=False):
@@ -29,8 +25,8 @@ def init_seeds(seed=0, cuda_deterministic=False):
 
 def get_device(dist_info):
     if torch.cuda.is_available():
-        if dist_info['is_dist']:
-            device = torch.device('cuda', dist_info['local_rank'])
+        if dist_info.is_dist:
+            device = torch.device('cuda', dist_info.local_rank)
         else:
             device = torch.device('cuda')
     else:
@@ -38,40 +34,24 @@ def get_device(dist_info):
     return device
 
 
-def parse_config(config_path, args=None):
-    with open(config_path, 'r') as f:
-        original_config = yaml.safe_load(f)
-    if args is None:
-        return original_config
-    config = original_config.copy()
-    for k, v in original_config.items():
-        if hasattr(args, k):
-            config[k] = getattr(args, k)
-    return config
+def dict2namespace(config):
+    namespace = argparse.Namespace()
+    for key, value in config.items():
+        if isinstance(value, dict):
+            new_value = dict2namespace(value)
+        else:
+            new_value = value
+        setattr(namespace, key, new_value)
+    return namespace
 
 
 def check_freq(freq: int, step: int):
-    return isinstance(freq, int) and freq >= 1 and (step + 1) % freq == 0
+    assert isinstance(freq, int)
+    return freq >= 1 and (step + 1) % freq == 0
 
 
 def get_time_str():
     return datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-
-
-@master_only
-def create_log_directory(config, config_path):
-    log_root = os.path.join('runs', 'exp-' + get_time_str())
-    os.makedirs(log_root)
-
-    if config.get('save_freq'):
-        os.makedirs(os.path.join(log_root, 'ckpt'), exist_ok=True)
-
-    if config.get('sample_freq'):
-        os.makedirs(os.path.join(log_root, 'samples'), exist_ok=True)
-
-    config_filename = os.path.splitext(os.path.basename(config_path))[0]
-    shutil.copyfile(config_path, os.path.join(log_root, config_filename + '.yml'))
-    return log_root
 
 
 def get_bare_model(model):
