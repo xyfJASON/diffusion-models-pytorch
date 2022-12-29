@@ -2,12 +2,13 @@ import yaml
 import argparse
 
 from utils.misc import dict2namespace
-from runners import Runner
+from runners import DDPMRunner, DDIMRunner
 
 
 if __name__ == '__main__':
     # ARGPARSE
     parser = argparse.ArgumentParser()
+    parser.add_argument('model', choices=['ddpm', 'ddim'], help='choose a model')
     parser.add_argument('func', choices=['train',               # train
                                          'evaluate',            # evaluate
                                          'sample',              # sample images
@@ -22,7 +23,13 @@ if __name__ == '__main__':
         config = yaml.safe_load(f)
     config = dict2namespace(config)
 
-    runner = Runner(args, config)
+    if args.model == 'ddpm':
+        runner = DDPMRunner(args, config)
+    elif args.model == 'ddim':
+        runner = DDIMRunner(args, config)
+    else:
+        raise ValueError
+
     if args.func == 'train':
         runner.train()
     elif args.func == 'evaluate':

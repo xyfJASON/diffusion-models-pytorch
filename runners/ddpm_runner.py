@@ -23,12 +23,17 @@ from utils.dist import get_dist_info, master_only, init_dist, reduce_tensor
 from utils.misc import get_device, init_seeds, check_freq, get_bare_model, get_time_str, dict2namespace
 
 
-class Runner:
+class DDPMRunner:
     def __init__(self, args, config):
         self.config = config
 
+        # INITIALIZE DISTRIBUTED MODE
+        init_dist()
+        self.dist_info = dict2namespace(get_dist_info())
+        self.device = get_device(self.dist_info)
+
         # CREATE LOG DIRECTORY
-        if args.func == 'train':
+        if args.func == 'train' and self.dist_info.is_master:
             self.log_root = os.path.join('runs', 'exp-' + get_time_str())
             os.makedirs(self.log_root)
             os.makedirs(os.path.join(self.log_root, 'ckpt'))
@@ -37,11 +42,9 @@ class Runner:
             shutil.copyfile(args.config, os.path.join(self.log_root, config_filename + '.yml'))
         else:
             self.log_root = None
-
-        # INITIALIZE DISTRIBUTED MODE
-        init_dist()
-        self.dist_info = dict2namespace(get_dist_info())
-        self.device = get_device(self.dist_info)
+        object_list = [self.log_root]
+        dist.broadcast_object_list(object_list, src=0)
+        self.log_root = object_list[0]
 
         # INITIALIZE SEEDS
         init_seeds(getattr(self.config, 'seed', 2022) + self.dist_info.global_rank)
@@ -122,8 +125,9 @@ class Runner:
             )
 
         # TEST SAMPLES
-        if self.config.train.n_samples % self.dist_info.world_size != 0:
-            raise ValueError('Number of samples should be divisible by WORLD_SIZE!')
+        if args.func == 'train':
+            if self.config.train.n_samples % self.dist_info.world_size != 0:
+                raise ValueError('Number of samples should be divisible by WORLD_SIZE!')
 
     def load_model(self, model_path: str, load_ema: bool = False):
         ckpt = torch.load(model_path, map_location='cpu')
@@ -323,7 +327,6 @@ class Runner:
 
         skip = self.config.model.total_steps // cfg.n_timesteps
         timesteps = torch.arange(0, self.config.model.total_steps, skip)
-        timesteps[-1] = self.config.model.total_steps - 1
         DiffusionModel = models.DDPMSkip(
             timesteps=timesteps,
             total_steps=self.config.model.total_steps,
