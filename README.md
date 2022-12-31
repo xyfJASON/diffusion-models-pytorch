@@ -11,20 +11,9 @@ Reproduce Diffusion Models with PyTorch.
 
 
 
-## Docs
+## DDPM
 
-Things about how to run the code.
-
-- [DDPM](./docs/DDPM.md)
-- [DDIM](./docs/DDIM.md)
-
-
-
-## Results
-
-
-
-### DDPM
+**How to run the code**: [DDPM](./docs/DDPM.md)
 
 **Quantitative results on CIFAR-10 32x32**:
 
@@ -63,9 +52,6 @@ Things about how to run the code.
     <td align="center"> 7.1148 (0.0824)</td>
   </tr>
  </table>
-
-
-
 **Qualitative results**:
 
 <table align="center" width=100%>
@@ -87,8 +73,9 @@ Things about how to run the code.
  </table>
 
 
+## DDIM
 
-### DDIM
+**How to run the code**: [DDIM](./docs/DDIM.md)
 
 **Quantitative results on CIFAR-10 32x32**:
 
@@ -142,12 +129,19 @@ Things about how to run the code.
     <td align="center">7.1315 (0.0682)</td>
   </tr>
  </table>
-
-
 **Qualitative results**:
 
-<p align="center">
-  <img src="./assets/ddim-cifar10.png" width=60% />
-</p>
+- Sample with fewer steps:
 
-Sampling with fewer steps leads to blurrier results.
+  <p align="center">
+    <img src="./assets/ddim-cifar10.png" width=60% />
+  </p>
+
+  It can be seen that fewer steps leads to blurrier results.
+
+- Spherical linear interpolation (slerp) between two samples:
+
+  <p align="center">
+    <img src="./assets/ddim-cifar10-interpolate.png" width=60% />
+  </p>
+

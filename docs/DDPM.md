@@ -101,6 +101,9 @@ Below are specific instructions for training, sampling and evaluating.
    ```shell
    # For single GPU/CPU
    python main.py ddpm evaluate -c ./configs/ddpm_cifar10.yml
+   ```
+   
+   ```shell
    # For multiple GPUs
    torchrun --nproc_per_node NUM_GPUS main.py ddpm evaluate -c ./configs/ddpm_cifar10.yml
    ```

@@ -14,6 +14,7 @@ if __name__ == '__main__':
                                          'sample',              # sample images
                                          'sample_denoise',      # sample images with denoising process
                                          'sample_skip',         # sample images with fewer timesteps
+                                         'sample_interpolate',  # interpolate between two images
                                          ], help='choose a function')
     parser.add_argument('-c', '--config', type=str, help='path to configuration file')
     args = parser.parse_args()
@@ -30,6 +31,9 @@ if __name__ == '__main__':
     else:
         raise ValueError
 
+    if not hasattr(runner, args.func):
+        raise AttributeError(f"Runner of {args.model} doesn't have {args.func} method")
+
     if args.func == 'train':
         runner.train()
     elif args.func == 'evaluate':
@@ -40,5 +44,7 @@ if __name__ == '__main__':
         runner.sample_denoise()
     elif args.func == 'sample_skip':
         runner.sample_skip()
+    elif args.func == 'sample_interpolate':
+        runner.sample_interpolate()
     else:
         raise ValueError

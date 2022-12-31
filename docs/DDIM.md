@@ -18,6 +18,7 @@ The arguments are:
 
 - `FUNC`: specify a function in the following choices:
   - `sample`: to sample images
+  - `sample_interpolate`: to interpolate between two samples
   - `evaluate`: to evaluate FID and IS
 - `CONFIG`: path to the configuration file. All the configuration (data directory, hyper-parameters, etc.) are set in this file.
 
@@ -47,6 +48,18 @@ DDIM shares the same training process with DDPM. Please refer to [DDPM doc](./DD
    torchrun --nproc_per_node NUM_GPUS main.py ddim sample -c ./configs/ddim_cifar10.yml
    ```
 
+3. To interpolate between two samples, run command:
+
+   ```shell
+   # For single GPU/CPU
+   python main.py ddim sample_interpolate -c ./configs/ddim_cifar10.yml
+   ```
+
+   ```shell
+   # For multiple GPUs
+   torchrun --nproc_per_node NUM_GPUS main.py ddim sample_interpolate -c ./configs/ddim_cifar10.yml
+   ```
+
 
 
 ## Evaluation
@@ -60,6 +73,9 @@ DDIM shares the same training process with DDPM. Please refer to [DDPM doc](./DD
    ```shell
    # For single GPU/CPU
    python main.py ddim evaluate -c ./configs/ddim_cifar10.yml
+   ```
+   
+   ```shell
    # For multiple GPUs
    torchrun --nproc_per_node NUM_GPUS main.py ddim evaluate -c ./configs/ddim_cifar10.yml
    ```

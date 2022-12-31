@@ -134,6 +134,42 @@ class DDIMRunner:
         self.logger.info('End of sampling')
 
     @torch.no_grad()
+    def sample_interpolate(self):
+        cfg = self.config.sample_interpolate
+        self.logger.info('Start sampling...')
+        self.logger.info(f'Samples will be saved to {cfg.save_dir}')
+        os.makedirs(cfg.save_dir, exist_ok=True)
+        num_each_device = cfg.n_samples // self.dist_info.world_size
+        model = get_bare_model(self.model).eval()
+
+        def slerp(t, z1, z2):  # noqa
+            theta = torch.acos(torch.sum(z1 * z2) / (torch.linalg.norm(z1) * torch.linalg.norm(z2)))
+            return torch.sin((1 - t) * theta) / torch.sin(theta) * z1 + torch.sin(t * theta) / torch.sin(theta) * z2
+
+        total = math.ceil(num_each_device / cfg.batch_size)
+        img_shape = (self.config.data.img_channels, self.config.data.img_size, self.config.data.img_size)
+        for i in range(total):
+            n = min(cfg.batch_size, num_each_device - i * cfg.batch_size)
+            z1 = torch.randn((n, *img_shape), device=self.device)
+            z2 = torch.randn((n, *img_shape), device=self.device)
+            results = []
+            for t in tqdm.tqdm(torch.linspace(0, 1, cfg.n_interpolate), desc=f'Sampling({i+1}/{total})', ncols=120):
+                X = self.DiffusionModel.sample(
+                    model=model,
+                    init_noise=slerp(t, z1, z2),
+                ).clamp(-1, 1)
+                results.append(X)
+            results = torch.stack(results, dim=1)
+            for j, x in enumerate(results):
+                idx = self.dist_info.global_rank * num_each_device + i * cfg.batch_size + j
+                save_image(
+                    tensor=x.cpu(), fp=os.path.join(cfg.save_dir, f'{idx}.png'),
+                    nrow=len(x), normalize=True, value_range=(-1, 1),
+                )
+        self.logger.info(f"Sampled images are saved to {cfg.save_dir}")
+        self.logger.info('End of sampling')
+
+    @torch.no_grad()
     def evaluate(self):
         self.logger.info('Start evaluating...')
         cfg = self.config.evaluate
