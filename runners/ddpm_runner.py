@@ -42,9 +42,10 @@ class DDPMRunner:
             shutil.copyfile(args.config, os.path.join(self.log_root, config_filename + '.yml'))
         else:
             self.log_root = None
-        object_list = [self.log_root]
-        dist.broadcast_object_list(object_list, src=0)
-        self.log_root = object_list[0]
+        if self.dist_info.is_dist:
+            object_list = [self.log_root]
+            dist.broadcast_object_list(object_list, src=0)
+            self.log_root = object_list[0]
 
         # INITIALIZE SEEDS
         init_seeds(getattr(self.config, 'seed', 2022) + self.dist_info.global_rank)

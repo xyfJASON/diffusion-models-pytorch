@@ -9,11 +9,9 @@ Reproduce Diffusion Models with PyTorch.
 - [x] DDPM
 - [x] DDIM
 
+<br/>
 
-
-## DDPM
-
-**How to run the code**: [DDPM](./docs/DDPM.md)
+## DDPM [[doc](./docs/DDPM.md)]
 
 **Quantitative results on CIFAR-10 32x32**:
 
@@ -52,30 +50,38 @@ Reproduce Diffusion Models with PyTorch.
     <td align="center"> 7.1148 (0.0824)</td>
   </tr>
  </table>
+
+
 **Qualitative results**:
 
 <table align="center" width=100%>
   <tr>
-    <th align="center">Dataset</th>
-    <th align="center">Random samples</th>
-    <th align="center">Denoising process</th>
+    <th align="center" width=10%>Dataset</th>
+    <th align="center" width=27%>Random samples</th>
+    <th align="center" width=63%>Denoising process</th>
   </tr>
   <tr>
-    <th align="center">MNIST</th>
+    <th align="center">MNIST<br/>32x32</th>
     <td align="center"><img src="./assets/ddpm-mnist-random.png"/></td>
     <td align="center"><img src="./assets/ddpm-mnist-denoise.png"/></td>
   </tr>
   <tr>
-    <th align="center">CIFAR-10</th>
+    <th align="center">CIFAR-10<br/>32x32</th>
     <td align="center"><img src="./assets/ddpm-cifar10-random.png"/></td>
     <td align="center"><img src="./assets/ddpm-cifar10-denoise.png"/></td>
   </tr>
+  <tr>
+    <th align="center">CelebA-HQ<br/>256x256</th>
+    <td align="center"><img src="./assets/ddpm-celebahq-random.png"/></td>
+    <td align="center"><img src="./assets/ddpm-celebahq-denoise.png"/></td>
+  </tr>
  </table>
 
+:warning: Results on CelebA-HQ 256x256 suffer from severe color shifting problem, and I currently have no clue about it.
 
-## DDIM
+<br/>
 
-**How to run the code**: [DDIM](./docs/DDIM.md)
+## DDIM [[doc](./docs/DDIM.md)]
 
 **Quantitative results on CIFAR-10 32x32**:
 
@@ -129,6 +135,8 @@ Reproduce Diffusion Models with PyTorch.
     <td align="center">7.1315 (0.0682)</td>
   </tr>
  </table>
+
+
 **Qualitative results**:
 
 - Sample with fewer steps:
@@ -139,9 +147,13 @@ Reproduce Diffusion Models with PyTorch.
 
   It can be seen that fewer steps leads to blurrier results.
 
-- Spherical linear interpolation (slerp) between two samples:
+- Spherical linear interpolation (slerp) between two samples (100 steps):
 
   <p align="center">
     <img src="./assets/ddim-cifar10-interpolate.png" width=60% />
+  </p>
+  
+  <p align="center">
+    <img src="./assets/ddim-celebahq-interpolate.png" width=60% />
   </p>
 
