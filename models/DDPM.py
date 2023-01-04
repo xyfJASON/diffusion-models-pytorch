@@ -127,7 +127,7 @@ class DDPM:
         mean_t, var_t, log_var_t = self.q_posterior_mean_variance(pred_X0, Xt, t)
         var_t = self._extract(self.model_variance, t)
         log_var_t = self._extract(self.model_log_variance, t)
-        return mean_t, var_t, log_var_t
+        return {'mean': mean_t, 'var': var_t, 'log_var': log_var_t, 'pred_X0': pred_X0}
 
     def _pred_X0_from_eps(self, Xt: Tensor, t: Tensor, eps: Tensor):
         return (self._extract(self.sqrt_recip_alphas_cumprod, t) * Xt -
@@ -143,28 +143,35 @@ class DDPM:
             clip_denoised (bool): whether to clip predicted X0 to range [-1, 1]
         """
         t_batch = torch.full((Xt.shape[0], ), t, device=Xt.device, dtype=torch.long)
-        mean_t, _, log_var_t = self.p_mean_variance(model, Xt, t_batch, clip_denoised)
-        if t == 0:
-            return mean_t
-        return mean_t + torch.exp(0.5 * log_var_t) * torch.randn_like(Xt)
+        out = self.p_mean_variance(model, Xt, t_batch, clip_denoised)
+        sample = out['mean'] if t == 0 else out['mean'] + torch.exp(0.5 * out['log_var']) * torch.randn_like(Xt)
+        return {'sample': sample, 'pred_X0': out['pred_X0']}
+
+    @torch.no_grad()
+    def sample_loop(self,
+                    model: nn.Module,
+                    init_noise: Tensor,
+                    clip_denoised: bool = True,
+                    with_tqdm: bool = False,
+                    **kwargs):
+        img = init_noise
+        kwargs['disable'] = kwargs.get('disable', False) or (not with_tqdm)
+        for t in tqdm.tqdm(range(self.total_steps-1, -1, -1), **kwargs):
+            out = self.p_sample(model, img, t, clip_denoised)
+            img = out['sample']
+            yield out
 
     @torch.no_grad()
     def sample(self,
                model: nn.Module,
                init_noise: Tensor,
                clip_denoised: bool = True,
-               return_freq: int = 0,
                with_tqdm: bool = False,
                **kwargs):
-        img = init_noise
-        imgs = [img.cpu()] if return_freq else []
-
-        kwargs['disable'] = kwargs.get('disable', False) or (not with_tqdm)
-        for t in tqdm.tqdm(range(self.total_steps-1, -1, -1), **kwargs):
-            img = self.p_sample(model, img, t, clip_denoised)
-            if return_freq > 0 and (self.total_steps - t) % return_freq == 0:
-                imgs.append(img.cpu())
-        return imgs if return_freq else img.cpu()
+        sample = None
+        for out in self.sample_loop(model, init_noise, clip_denoised, with_tqdm, **kwargs):
+            sample = out['sample']
+        return sample
 
 
 class DDPMSkip(DDPM):

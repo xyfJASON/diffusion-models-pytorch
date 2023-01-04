@@ -56,8 +56,17 @@ sample_denoise:
   load_ema: true
   n_samples: 8
   batch_size: 8
-  return_freq: 50
+  n_denoise: 20
   save_dir: ./samples/ddpm-celebahq/denoise/
+
+
+sample_progressive:
+  model_path: ./runs/ddpm-celebahq-resume2/ckpt/epoch409.pt
+  load_ema: true
+  n_samples: 8
+  batch_size: 8
+  n_progressive: 20
+  save_dir: ./samples/ddpm-celebahq/progressive/
 
 
 evaluate:

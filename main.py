@@ -13,6 +13,7 @@ if __name__ == '__main__':
                                          'evaluate',            # evaluate
                                          'sample',              # sample images
                                          'sample_denoise',      # sample images with denoising process
+                                         'sample_progressive',  # sample images with predicted X0 over time
                                          'sample_skip',         # sample images with fewer timesteps
                                          'sample_interpolate',  # interpolate between two images
                                          ], help='choose a function')
@@ -42,6 +43,8 @@ if __name__ == '__main__':
         runner.sample()
     elif args.func == 'sample_denoise':
         runner.sample_denoise()
+    elif args.func == 'sample_progressive':
+        runner.sample_progressive()
     elif args.func == 'sample_skip':
         runner.sample_skip()
     elif args.func == 'sample_interpolate':

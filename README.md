@@ -57,25 +57,30 @@ Reproduce Diffusion Models with PyTorch.
 <table align="center" width=100%>
   <tr>
     <th align="center" width=10%>Dataset</th>
-    <th align="center" width=27%>Random samples</th>
-    <th align="center" width=63%>Denoising process</th>
+    <th align="center" width=16%>Random samples</th>
+    <th align="center" width=37%>Denoising process</th>
+    <th align="center" width=37%>Progressive generation</th>
   </tr>
   <tr>
     <th align="center">MNIST<br/>32x32</th>
     <td align="center"><img src="./assets/ddpm-mnist-random.png"/></td>
     <td align="center"><img src="./assets/ddpm-mnist-denoise.png"/></td>
+    <td align="center"><img src="./assets/ddpm-mnist-progressive.png"/></td>
   </tr>
   <tr>
     <th align="center">CIFAR-10<br/>32x32</th>
     <td align="center"><img src="./assets/ddpm-cifar10-random.png"/></td>
     <td align="center"><img src="./assets/ddpm-cifar10-denoise.png"/></td>
+    <td align="center"><img src="./assets/ddpm-cifar10-progressive.png"/></td>
   </tr>
   <tr>
     <th align="center">CelebA-HQ<br/>256x256</th>
     <td align="center"><img src="./assets/ddpm-celebahq-random.png"/></td>
     <td align="center"><img src="./assets/ddpm-celebahq-denoise.png"/></td>
+    <td align="center"><img src="./assets/ddpm-celebahq-progressive.png"/></td>
   </tr>
  </table>
+
 
 :warning: Results on CelebA-HQ 256x256 suffer from severe color shifting problem, and I currently have no clue about it.
 

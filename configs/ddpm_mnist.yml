@@ -56,8 +56,17 @@ sample_denoise:
   load_ema: true
   n_samples: 8
   batch_size: 8
-  return_freq: 10
+  n_denoise: 20
   save_dir: ./samples/ddpm-mnist/denoise/
+
+
+sample_progressive:
+  model_path: ./runs/ddpm-mnist/model.pt
+  load_ema: true
+  n_samples: 8
+  batch_size: 8
+  n_progressive: 20
+  save_dir: ./samples/ddpm-mnist/progressive/
 
 
 sample_skip:
