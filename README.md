@@ -1,6 +1,6 @@
-# Repro-Diffusion-Models
+# Diffusion-Models-Implementations
 
-Reproduce Diffusion Models with PyTorch.
+Implementations of Diffusion Models with PyTorch.
 
 
 
