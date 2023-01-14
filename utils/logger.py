@@ -32,7 +32,7 @@ class MessageLogger:
         self.print_freq = print_freq
         # logging
         if log_root is not None:
-            self.logger = get_logger(log_file=os.path.join(log_root, 'output.log'))
+            self.logger = get_logger(log_file=os.path.join(log_root, 'output.log'), file_mode='a')
         else:
             self.logger = get_logger()
         # tensorboard

@@ -1,4 +1,7 @@
+import os
+import sys
 import random
+import shutil
 import datetime
 import argparse
 import numpy as np
@@ -59,3 +62,19 @@ def get_bare_model(model):
         return model.module
     else:
         return model
+
+
+def create_exp_dir(args, config):
+    exp_dir = os.path.join('runs', 'exp-' + get_time_str() if args.exp is None else args.exp)
+    if os.path.exists(exp_dir) and getattr(config.train, 'resume', None) is None:
+        print(f'{exp_dir} already exists! Cover it anyway? [Y/N]:', end=' ')
+        if input().lower() == 'y':
+            shutil.rmtree(exp_dir, ignore_errors=True)
+        else:
+            sys.exit(1)
+    os.makedirs(exp_dir, exist_ok=True)
+    os.makedirs(os.path.join(exp_dir, 'ckpt'), exist_ok=True)
+    os.makedirs(os.path.join(exp_dir, 'samples'), exist_ok=True)
+    config_filename = os.path.splitext(os.path.basename(args.config))[0]
+    shutil.copyfile(args.config, os.path.join(exp_dir, config_filename + '.yml'))
+    return exp_dir

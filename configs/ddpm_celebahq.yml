@@ -6,7 +6,6 @@ data:
 
 
 model:
-  # UNet
   dim: 128
   dim_mults: [1, 1, 2, 2, 4, 4]
   use_attn: [false, false, false, false, true, false]
@@ -17,7 +16,8 @@ model:
   dropout: 0.0
   ema_decay: 0.9999
 
-  # DDPM
+
+ddpm:
   total_steps: 1000
   beta_schedule: linear
   beta_start: 0.0001
@@ -67,8 +67,3 @@ sample_progressive:
   batch_size: 8
   n_progressive: 20
   save_dir: ./samples/ddpm-celebahq/progressive/
-
-
-evaluate:
-  num_real: 10000
-  generated_samples: ./samples/ddpm-celebahq/random/

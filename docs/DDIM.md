@@ -4,25 +4,7 @@
 
 
 
-## Overview
-
-The code supports training, sampling and evaluating, which share a common running command:
-
-```shell
-python main.py ddim FUNC -c CONFIG
-```
-
-Or change `python` to `torchrun --nproc_per_node NUM_GPUS` if running on multiple GPUs.
-
-The arguments are:
-
-- `FUNC`: specify a function in the following choices:
-  - `sample`: to sample images
-  - `sample_interpolate`: to interpolate between two samples
-  - `evaluate`: to evaluate FID and IS
-- `CONFIG`: path to the configuration file. All the configuration (data directory, hyper-parameters, etc.) are set in this file.
-
-Below are specific instructions for training, sampling and evaluating.
+:information_source: Note: For distributed training / sampling / evaluating, replace `python` with `torchrun --nproc_per_node NUM_GPUS` in all the following commands.
 
 
 
@@ -34,49 +16,35 @@ DDIM shares the same training process with DDPM. Please refer to [DDPM doc](./DD
 
 ## Sampling
 
-1. Edit the configuration file `./configs/ddim_cifar10.yml`. 
+1. Edit the configuration file (e.g. `./configs/ddim_cifar10.yml`).
 
 2. To sample random images, run command:
 
    ```shell
-   # For single GPU/CPU
-   python main.py ddim sample -c ./configs/ddim_cifar10.yml
+   python main.py ddim sample -c CONFIG_FILE
    ```
-
-   ```shell
-   # For multiple GPUs
-   torchrun --nproc_per_node NUM_GPUS main.py ddim sample -c ./configs/ddim_cifar10.yml
-   ```
-
+   
 3. To interpolate between two samples, run command:
 
    ```shell
-   # For single GPU/CPU
-   python main.py ddim sample_interpolate -c ./configs/ddim_cifar10.yml
+   python main.py ddim sample_interpolate -c CONFIG_FILE
    ```
-
-   ```shell
-   # For multiple GPUs
-   torchrun --nproc_per_node NUM_GPUS main.py ddim sample_interpolate -c ./configs/ddim_cifar10.yml
-   ```
+   
 
 
 
 ## Evaluation
 
-1. Sample random images (around 10k~50k images)
+1. Sample 10k~50k images.
 
-2. Edit the configuration file `./configs/ddim_cifar10.yml`. 
-
-3. Run command:
+2. Run command:
 
    ```shell
-   # For single GPU/CPU
-   python main.py ddim evaluate -c ./configs/ddim_cifar10.yml
+   python evaluate.py --dataset DATASET \
+                      --dataroot DATAROOT \
+                      --img_size IMG_SIZE \
+                      --n_eval N_EVAL \
+                      --fake_dir FAKE_DIR
    ```
    
-   ```shell
-   # For multiple GPUs
-   torchrun --nproc_per_node NUM_GPUS main.py ddim evaluate -c ./configs/ddim_cifar10.yml
-   ```
 

@@ -21,7 +21,7 @@ from utils.dist import get_dist_info, master_only, init_dist, reduce_tensor
 from utils.misc import get_device, init_seeds, check_freq, get_bare_model, create_exp_dir, dict2namespace
 
 
-class DDPMRunner:
+class ClassifierFreeRunner:
     def __init__(self, args, config):
         self.config = config
 
@@ -30,7 +30,7 @@ class DDPMRunner:
         self.dist_info = dict2namespace(get_dist_info())
         self.device = get_device(self.dist_info)
 
-        # CREATE LOG DIRECTORY
+        # CREATE EXPERIMENT DIRECTORY
         if args.func == 'train' and self.dist_info.is_master:
             self.exp_dir = create_exp_dir(args, config)
         else:
@@ -71,23 +71,25 @@ class DDPMRunner:
             self.logger.info(f'Each epoch has {len(self.train_loader)} iterations')
 
         # BUILD MODELS, OPTIMIZERS AND SCHEDULERS
-        self.DiffusionModel = diffusions.DDPM(
-            total_steps=self.config.ddpm.total_steps,
-            beta_schedule=self.config.ddpm.beta_schedule,
-            beta_start=self.config.ddpm.beta_start,
-            beta_end=self.config.ddpm.beta_end,
-            objective=self.config.ddpm.objective,
-            var_type=self.config.ddpm.var_type,
+        self.DiffusionModel = diffusions.ClassifierFree(
+            total_steps=self.config.classifier_free.total_steps,
+            beta_schedule=self.config.classifier_free.beta_schedule,
+            beta_start=self.config.classifier_free.beta_start,
+            beta_end=self.config.classifier_free.beta_end,
+            objective=self.config.classifier_free.objective,
+            var_type=self.config.classifier_free.var_type,
         )
-        self.model = models.UNet(
+        self.model = models.UNetConditional(
             img_channels=self.config.data.img_channels,
             dim=self.config.model.dim,
             dim_mults=self.config.model.dim_mults,
             use_attn=self.config.model.use_attn,
             num_res_blocks=self.config.model.num_res_blocks,
+            num_classes=self.config.data.num_classes,
             resblock_groups=self.config.model.resblock_groups,
             attn_groups=self.config.model.attn_groups,
-            attn_heads=self.config.model.attn_heads,
+            attn_head_dims=self.config.model.attn_head_dims,
+            resblock_updown=self.config.model.resblock_updown,
             dropout=self.config.model.dropout,
         )
         self.model.to(device=self.device)
@@ -114,11 +116,12 @@ class DDPMRunner:
                 module=self.model,
                 device_ids=[self.dist_info.local_rank],
                 output_device=self.dist_info.local_rank,
+                find_unused_parameters=True,
             )
 
         # TEST SAMPLES
         if args.func == 'train':
-            if self.config.train.n_samples % self.dist_info.world_size != 0:
+            if self.config.train.n_samples_each_class % self.dist_info.world_size != 0:
                 raise ValueError('Number of samples should be divisible by WORLD_SIZE!')
 
     def load_model(self, model_path: str, load_ema: bool = False):
@@ -144,6 +147,7 @@ class DDPMRunner:
         ckpt = torch.load(ckpt_path, map_location='cpu')
         self.optimizer.load_state_dict(ckpt['optimizer'])
         optimizer_to_device(self.optimizer, self.device)
+        self.logger.info(f'Successfully load optimizer from {ckpt_path}')
         self.start_epoch = ckpt['epoch'] + 1
         self.global_step = ckpt['global_step']
         self.logger.info(f'Restart at epoch {self.start_epoch}')
@@ -171,14 +175,16 @@ class DDPMRunner:
             # start of iter
             loss_meter = AverageMeter()
             pbar = tqdm.tqdm(self.train_loader, desc=f'Epoch {ep}', ncols=120, disable=not self.dist_info.is_master)
-            for it, X in enumerate(pbar):
+            for it, (X, y) in enumerate(pbar):
                 self.model.train()
 
-                X = X[0] if isinstance(X, (tuple, list)) else X
                 X = X.to(device=self.device, dtype=torch.float32)
+                y = y.to(device=self.device, dtype=torch.long)
+                if torch.rand(1) < self.config.train.p_uncond:
+                    y = None
 
-                t = torch.randint(self.config.ddpm.total_steps, (X.shape[0], ), device=self.device).long()
-                loss = self.DiffusionModel.loss_func(self.model, X0=X, t=t)
+                t = torch.randint(self.config.classifier_free.total_steps, (X.shape[0], ), device=self.device).long()
+                loss = self.DiffusionModel.loss_func(self.model, X0=X, y=y, t=t)
                 self.optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.)
@@ -219,32 +225,37 @@ class DDPMRunner:
     @torch.no_grad()
     def sample_during_training(self, savepath: str):
         cfg = self.config.train
-        num_each_device = cfg.n_samples // self.dist_info.world_size
-        model = get_bare_model(self.model).eval()
-
-        samples = []
+        num_each_device = cfg.n_samples_each_class // self.dist_info.world_size
         total = math.ceil(num_each_device / cfg.batch_size)
         img_shape = (self.config.data.img_channels, self.config.data.img_size, self.config.data.img_size)
-        for i in range(total):
-            n = min(cfg.batch_size, num_each_device - i * cfg.batch_size)
-            init_noise = torch.randn((n, *img_shape), device=self.device)
-            X = self.DiffusionModel.sample(
-                model=model,
-                init_noise=init_noise,
-                with_tqdm=self.dist_info.is_master,
-                desc=f'Sampling({i+1}/{total})',
-                ncols=120,
-            ).clamp(-1, 1)
-            samples.append(X)
+
+        model = get_bare_model(self.model).eval()
+        samples = []
+        for c in range(self.config.data.num_classes):
+            samples_c = []
+            for i in range(total):
+                n = min(cfg.batch_size, num_each_device - i * cfg.batch_size)
+                init_noise = torch.randn((n, *img_shape), device=self.device)
+                X = self.DiffusionModel.ddim_sample(  # use DDIM to save time during training
+                    model=model,
+                    class_label=c,
+                    init_noise=init_noise,
+                    guidance_scale=cfg.guidance_scale,
+                    skip_steps=self.config.classifier_free.total_steps // 10,
+                    with_tqdm=self.dist_info.is_master,
+                    desc=f'Sampling (Class {c+1}/{self.config.data.num_classes}, Fold {i+1}/{total})',
+                    ncols=120,
+                ).clamp(-1, 1)
+                samples_c.append(X)
+            samples_c = torch.cat(samples_c, dim=0)
+            if self.dist_info.is_dist:
+                sample_list = [torch.Tensor() for _ in range(self.dist_info.world_size)]
+                dist.all_gather_object(sample_list, samples_c)
+                samples_c = torch.cat(sample_list, dim=0)
+            samples.append(samples_c.cpu())
         samples = torch.cat(samples, dim=0)
-        if self.dist_info.is_dist:
-            sample_list = [torch.Tensor() for _ in range(self.dist_info.world_size)]
-            dist.all_gather_object(sample_list, samples)
-            samples = torch.cat(sample_list, dim=0)
-        samples = samples.cpu()
         if self.dist_info.is_master:
-            nrow = math.floor(math.sqrt(cfg.n_samples))
-            save_image(samples, savepath, nrow=nrow, normalize=True, value_range=(-1, 1))
+            save_image(samples, savepath, nrow=cfg.n_samples_each_class, normalize=True, value_range=(-1, 1))
 
     @torch.no_grad()
     def sample(self):
@@ -252,142 +263,41 @@ class DDPMRunner:
         self.logger.info('Start sampling...')
         self.logger.info(f'Samples will be saved to {cfg.save_dir}')
         os.makedirs(cfg.save_dir, exist_ok=True)
-        num_each_device = cfg.n_samples // self.dist_info.world_size
-        model = get_bare_model(self.model).eval()
-
+        num_each_device = cfg.n_samples_each_class // self.dist_info.world_size
         total = math.ceil(num_each_device / cfg.batch_size)
         img_shape = (self.config.data.img_channels, self.config.data.img_size, self.config.data.img_size)
-        for i in range(total):
-            n = min(cfg.batch_size, num_each_device - i * cfg.batch_size)
-            init_noise = torch.randn((n, *img_shape), device=self.device)
-            X = self.DiffusionModel.sample(
-                model=model,
-                init_noise=init_noise,
-                with_tqdm=self.dist_info.is_master,
-                desc=f'Sampling({i+1}/{total})',
-                ncols=120,
-            ).clamp(-1, 1)
-            for j, x in enumerate(X):
-                idx = self.dist_info.global_rank * num_each_device + i * cfg.batch_size + j
-                save_image(
-                    tensor=x.cpu(), fp=os.path.join(cfg.save_dir, f'{idx}.png'),
-                    nrow=1, normalize=True, value_range=(-1, 1),
-                )
-        self.logger.info(f"Sampled images are saved to {cfg.save_dir}")
-        self.logger.info('End of sampling')
 
-    @torch.no_grad()
-    def sample_denoise(self):
-        cfg = self.config.sample_denoise
-        self.logger.info('Start sampling...')
-        self.logger.info(f'Samples will be saved to {cfg.save_dir}')
-        os.makedirs(cfg.save_dir, exist_ok=True)
-        num_each_device = cfg.n_samples // self.dist_info.world_size
-        model = get_bare_model(self.model).eval()
-
-        total = math.ceil(num_each_device / cfg.batch_size)
-        img_shape = (self.config.data.img_channels, self.config.data.img_size, self.config.data.img_size)
-        freq = self.config.ddpm.total_steps // cfg.n_denoise
-        for i in range(total):
-            n = min(cfg.batch_size, num_each_device - i * cfg.batch_size)
-            init_noise = torch.randn((n, *img_shape), device=self.device)
-            sample_generator = self.DiffusionModel.sample_loop(
-                model=model,
-                init_noise=init_noise,
-                with_tqdm=self.dist_info.is_master,
-                desc=f'Sampling({i+1}/{total})',
-                ncols=120,
+        if cfg.use_ddim:
+            sample_fn = self.DiffusionModel.ddim_sample
+            kwargs = dict(
+                guidance_scale=cfg.guidance_scale,
+                eta=cfg.ddim.eta,
+                skip_type=cfg.ddim.skip_type,
+                skip_steps=cfg.ddim.skip_steps,
             )
-            X = []
-            for timestep, out in enumerate(sample_generator):
-                if (self.config.ddpm.total_steps - timestep - 1) % freq == 0:
-                    X.append(out['sample'])
-            X = torch.stack(X, dim=1).clamp(-1, 1)
-            for j, x in enumerate(X):
-                idx = self.dist_info.global_rank * num_each_device + i * cfg.batch_size + j
-                save_image(
-                    tensor=x.cpu(), fp=os.path.join(cfg.save_dir, f'{idx}.png'),
-                    nrow=len(x), normalize=True, value_range=(-1, 1),
-                )
-        self.logger.info(f"Sampled images are saved to {cfg.save_dir}")
-        self.logger.info('End of sampling')
+        else:
+            sample_fn = self.DiffusionModel.sample
+            kwargs = dict(guidance_scale=cfg.guidance_scale,)
 
-    @torch.no_grad()
-    def sample_progressive(self):
-        cfg = self.config.sample_progressive
-        self.logger.info('Start sampling...')
-        self.logger.info(f'Samples will be saved to {cfg.save_dir}')
-        os.makedirs(cfg.save_dir, exist_ok=True)
-        num_each_device = cfg.n_samples // self.dist_info.world_size
         model = get_bare_model(self.model).eval()
-
-        total = math.ceil(num_each_device / cfg.batch_size)
-        img_shape = (self.config.data.img_channels, self.config.data.img_size, self.config.data.img_size)
-        freq = self.config.ddpm.total_steps // cfg.n_progressive
-        for i in range(total):
-            n = min(cfg.batch_size, num_each_device - i * cfg.batch_size)
-            init_noise = torch.randn((n, *img_shape), device=self.device)
-            sample_generator = self.DiffusionModel.sample_loop(
-                model=model,
-                init_noise=init_noise,
-                with_tqdm=self.dist_info.is_master,
-                desc=f'Sampling({i+1}/{total})',
-                ncols=120,
-            )
-            X = []
-            for timestep, out in enumerate(sample_generator):
-                if (self.config.ddpm.total_steps - timestep - 1) % freq == 0:
-                    X.append(out['pred_X0'])
-            X = torch.stack(X, dim=1).clamp(-1, 1)
-            for j, x in enumerate(X):
-                idx = self.dist_info.global_rank * num_each_device + i * cfg.batch_size + j
-                save_image(
-                    tensor=x.cpu(), fp=os.path.join(cfg.save_dir, f'{idx}.png'),
-                    nrow=len(x), normalize=True, value_range=(-1, 1),
-                )
-        self.logger.info(f"Sampled images are saved to {cfg.save_dir}")
-        self.logger.info('End of sampling')
-
-    @torch.no_grad()
-    def sample_skip(self):
-        cfg = self.config.sample_skip
-        self.logger.info('Start sampling...')
-        self.logger.info(f'Samples will be saved to {cfg.save_dir}')
-        os.makedirs(cfg.save_dir, exist_ok=True)
-        num_each_device = cfg.n_samples // self.dist_info.world_size
-        model = get_bare_model(self.model).eval()
-
-        skip = self.config.ddpm.total_steps // cfg.n_timesteps
-        timesteps = torch.arange(0, self.config.ddpm.total_steps, skip)
-        DiffusionModel = diffusions.DDPMSkip(
-            timesteps=timesteps,
-            total_steps=self.config.ddpm.total_steps,
-            beta_schedule=self.config.ddpm.beta_schedule,
-            beta_start=self.config.ddpm.beta_start,
-            beta_end=self.config.ddpm.beta_end,
-            objective=self.config.ddpm.objective,
-            var_type=self.config.ddpm.var_type,
-        )
-
-        total = math.ceil(num_each_device / cfg.batch_size)
-        img_shape = (self.config.data.img_channels, self.config.data.img_size, self.config.data.img_size)
-        for i in range(total):
-            n = min(cfg.batch_size, num_each_device - i * cfg.batch_size)
-            init_noise = torch.randn((n, *img_shape), device=self.device)
-            X = DiffusionModel.sample(
-                model=model,
-                init_noise=init_noise,
-                with_tqdm=self.dist_info.is_master,
-                desc=f'Sampling({i+1}/{total})',
-                ncols=120,
-            ).clamp(-1, 1)
-
-            for j, x in enumerate(X):
-                idx = self.dist_info.global_rank * num_each_device + i * cfg.batch_size + j
-                save_image(
-                    tensor=x.cpu(),
-                    fp=os.path.join(cfg.save_dir, f'{idx}.png'),
-                    nrow=1, normalize=True, value_range=(-1, 1),
-                )
+        for c in range(self.config.data.num_classes):
+            for i in range(total):
+                n = min(cfg.batch_size, num_each_device - i * cfg.batch_size)
+                init_noise = torch.randn((n, *img_shape), device=self.device)
+                X = sample_fn(
+                    model=model,
+                    class_label=c,
+                    init_noise=init_noise,
+                    **kwargs,
+                    with_tqdm=self.dist_info.is_master,
+                    desc=f'Sampling (Class {c+1}/{self.config.data.num_classes}, Fold {i+1}/{total})',
+                    ncols=120,
+                ).clamp(-1, 1)
+                for j, x in enumerate(X):
+                    idx = self.dist_info.global_rank * num_each_device + i * cfg.batch_size + j
+                    save_image(
+                        tensor=x.cpu(), fp=os.path.join(cfg.save_dir, f'class{c}-{idx}.png'),
+                        nrow=1, normalize=True, value_range=(-1, 1),
+                    )
         self.logger.info(f"Sampled images are saved to {cfg.save_dir}")
         self.logger.info('End of sampling')

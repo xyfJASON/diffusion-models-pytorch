@@ -6,7 +6,6 @@ data:
 
 
 model:
-  # UNet
   dim: 128
   dim_mults: [1, 2, 2, 2]
   use_attn: [false, true, false, false]
@@ -17,7 +16,8 @@ model:
   dropout: 0.1
   ema_decay: 0.9999
 
-  # DDIM
+
+ddim:
   total_steps: 1000
   beta_schedule: linear
   beta_start: 0.0001
@@ -43,8 +43,3 @@ sample_interpolate:
   n_interpolate: 16
   batch_size: 64
   save_dir: ./samples/ddim-cifar10/interpolate-100steps/
-
-
-evaluate:
-  num_real: 50000
-  generated_samples: ./samples/ddim-cifar10/random-100steps/

@@ -6,7 +6,6 @@ data:
 
 
 model:
-  # UNet
   dim: 128
   dim_mults: [1, 1, 2, 2, 4, 4]
   use_attn: [false, false, false, false, true, false]
@@ -17,7 +16,8 @@ model:
   dropout: 0.1
   ema_decay: 0.9999
 
-  # DDIM
+
+ddim:
   total_steps: 1000
   beta_schedule: linear
   beta_start: 0.0001
@@ -43,8 +43,3 @@ sample_interpolate:
   n_interpolate: 10
   batch_size: 16
   save_dir: ./samples/ddim-celebahq/interpolate-100steps/
-
-
-evaluate:
-  num_real: 30000
-  generated_samples: ./samples/ddim-celebahq/random-100steps/

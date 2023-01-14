@@ -1,6 +1,6 @@
 # Diffusion-Models-Implementations
 
-Implementations of Diffusion Models with PyTorch.
+My implementations of Diffusion Models with PyTorch.
 
 
 
@@ -8,6 +8,21 @@ Implementations of Diffusion Models with PyTorch.
 
 - [x] DDPM
 - [x] DDIM
+- [ ] Classifier Guidance
+- [x] Classifier-Free Guidance
+
+<br/>
+
+## Sampling Algorithms: Fidelity-Speed Visualization
+
+I use the same model in all tests, which is trained following the standard DDPM. Thus the comparison depends only on the performance of different sampling algorithms (or SDE/ODE solvers).
+
+<img src="./assets/fidelity-speed-visualization.png" width=80% />
+
+Interesting facts observed:
+
+- DDPM (fixed-large) performs better than DDPM (fixed-small) with 1000 steps, but degrades drastically as the number of steps decreases. If you check on the samples from DDPM (fixed-large) (<= 100 steps), you'll find that they still contain noticeable noises.
+- DDPM (fixed-small) and DDIM (eta=1) are theoretically the same, and indeed, their curves are very close, especially in the FID case.
 
 <br/>
 
@@ -23,10 +38,25 @@ Implementations of Diffusion Models with PyTorch.
     <th align="center">IS</th>
   </tr>
   <tr>
-    <td align="center">fixed-large</td>
+    <td align="center" rowspan="4">fixed-large</td>
     <td align="center">1000</td>
     <td align="center"><b>3.1246</b></td>
     <td align="center"><b>9.3690 (0.1015)</b></td>
+  </tr>
+  <tr>
+    <td align="center">100 (10x faster)</td>
+    <td align="center">45.7398</td>
+    <td align="center">8.6780 (0.1260)</td>
+  </tr>
+  <tr>
+    <td align="center">50 (20x faster)</td>
+    <td align="center">85.2383</td>
+    <td align="center">6.2571 (0.0939)</td>
+  </tr>
+  <tr>
+    <td align="center">10 (100x faster)</td>
+    <td align="center">267.5894</td>
+    <td align="center">1.5900 (0.0082)</td>
   </tr>
   <tr>
     <td align="center" rowspan="4">fixed-small</td>
@@ -50,6 +80,7 @@ Implementations of Diffusion Models with PyTorch.
     <td align="center"> 7.1148 (0.0824)</td>
   </tr>
  </table>
+
 
 
 **Qualitative results**:
@@ -150,7 +181,7 @@ Implementations of Diffusion Models with PyTorch.
     <img src="./assets/ddim-cifar10.png" width=60% />
   </p>
 
-  It can be seen that fewer steps leads to blurrier results.
+  From top to bottom: 10 steps, 50 steps, 100 steps and 1000 steps. It can be seen that fewer steps leads to blurrier results.
 
 - Spherical linear interpolation (slerp) between two samples (100 steps):
 
@@ -161,4 +192,22 @@ Implementations of Diffusion Models with PyTorch.
   <p align="center">
     <img src="./assets/ddim-celebahq-interpolate.png" width=60% />
   </p>
+
+<br/>
+
+## Classifier-Free Guidance [[doc](./docs/Classifier-Free Guidance)]
+
+:small_orange_diamond: I use $s$ in [Classifier Guidance paper](https://arxiv.org/abs/2105.05233) as the scale factor rather than $w$ in the [Classifier-Free Guidance paper](https://arxiv.org/abs/2207.12598). In fact, we have $s=w+1$, and:
+
+- $s=0$: unconditional generation
+- $s=1$: non-guided conditional generation
+- $s>1$: guided conditional generation
+
+
+
+**Qualitative results**:
+
+<img src="./assets/classifier-free-cifar10.png" />
+
+From left to right: $s=0$ (unconditional), $s=1.0$ (non-guided conditional), $s=3.0$, $s=5.0$. Each row corresponds to a class.
 

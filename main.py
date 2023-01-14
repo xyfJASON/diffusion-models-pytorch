@@ -1,16 +1,15 @@
 import yaml
 import argparse
 
+import runners
 from utils.misc import dict2namespace
-from runners import DDPMRunner, DDIMRunner
 
 
 if __name__ == '__main__':
     # ARGPARSE
     parser = argparse.ArgumentParser()
-    parser.add_argument('model', choices=['ddpm', 'ddim'], help='choose a model')
+    parser.add_argument('model', choices=['ddpm', 'ddim', 'classifier_free'], help='choose a model')
     parser.add_argument('func', choices=['train',               # train
-                                         'evaluate',            # evaluate
                                          'sample',              # sample images
                                          'sample_denoise',      # sample images with denoising process
                                          'sample_progressive',  # sample images with predicted X0 over time
@@ -18,6 +17,7 @@ if __name__ == '__main__':
                                          'sample_interpolate',  # interpolate between two images
                                          ], help='choose a function')
     parser.add_argument('-c', '--config', type=str, help='path to configuration file')
+    parser.add_argument('-e', '--exp', type=str, help='experiment name, used to create experiment directory')
     args = parser.parse_args()
 
     # READ CONFIGURATION FILE
@@ -26,9 +26,11 @@ if __name__ == '__main__':
     config = dict2namespace(config)
 
     if args.model == 'ddpm':
-        runner = DDPMRunner(args, config)
+        runner = runners.DDPMRunner(args, config)
     elif args.model == 'ddim':
-        runner = DDIMRunner(args, config)
+        runner = runners.DDIMRunner(args, config)
+    elif args.model == 'classifier_free':
+        runner = runners.ClassifierFreeRunner(args, config)
     else:
         raise ValueError
 
@@ -37,8 +39,6 @@ if __name__ == '__main__':
 
     if args.func == 'train':
         runner.train()
-    elif args.func == 'evaluate':
-        runner.evaluate()
     elif args.func == 'sample':
         runner.sample()
     elif args.func == 'sample_denoise':
