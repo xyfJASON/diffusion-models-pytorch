@@ -17,7 +17,9 @@ My implementations of Diffusion Models with PyTorch.
 
 I use the same model in all tests, which is trained following the standard DDPM. Thus the comparison depends only on the performance of different sampling algorithms (or SDE/ODE solvers).
 
-<img src="./assets/fidelity-speed-visualization.png" width=80% />
+<p align="center">
+  <img src="./assets/fidelity-speed-visualization.png" width=80% />
+</p>
 
 Interesting facts observed:
 
@@ -26,7 +28,7 @@ Interesting facts observed:
 
 <br/>
 
-## DDPM [[doc](./docs/DDPM.md)]
+## DDPM [[doc](./docs/DDPM.md)] [[official repo](https://github.com/hojonathanho/diffusion)]
 
 **Quantitative results on CIFAR-10 32x32**:
 
@@ -34,8 +36,8 @@ Interesting facts observed:
   <tr>
     <th align="center">Type of variance</th>
     <th align="center">timesteps</th>
-    <th align="center">FID</th>
-    <th align="center">IS</th>
+    <th align="center">FID ↓</th>
+    <th align="center">IS ↑</th>
   </tr>
   <tr>
     <td align="center" rowspan="4">fixed-large</td>
@@ -83,6 +85,7 @@ Interesting facts observed:
 
 
 
+
 **Qualitative results**:
 
 <table align="center" width=100%>
@@ -117,7 +120,7 @@ Interesting facts observed:
 
 <br/>
 
-## DDIM [[doc](./docs/DDIM.md)]
+## DDIM [[doc](./docs/DDIM.md)] [[official repo](https://github.com/ermongroup/ddim)]
 
 **Quantitative results on CIFAR-10 32x32**:
 
@@ -125,8 +128,8 @@ Interesting facts observed:
   <tr>
     <th align="center">eta</th>
     <th align="center">timesteps</th>
-    <th align="center">FID</th>
-    <th align="center">IS</th>
+    <th align="center">FID ↓</th>
+    <th align="center">IS ↑</th>
   </tr>
   <tr>
     <td align="center" rowspan="4">0.0</td>
@@ -173,12 +176,13 @@ Interesting facts observed:
  </table>
 
 
+
 **Qualitative results**:
 
 - Sample with fewer steps:
 
   <p align="center">
-    <img src="./assets/ddim-cifar10.png" width=60% />
+    <img src="./assets/ddim-cifar10.png" width=50% />
   </p>
 
   From top to bottom: 10 steps, 50 steps, 100 steps and 1000 steps. It can be seen that fewer steps leads to blurrier results.
@@ -195,7 +199,7 @@ Interesting facts observed:
 
 <br/>
 
-## Classifier-Free Guidance [[doc](./docs/Classifier-Free Guidance)]
+## Classifier-Free Guidance [[doc](./docs/Classifier-Free Guidance.md)]
 
 :small_orange_diamond: I use $s$ in [Classifier Guidance paper](https://arxiv.org/abs/2105.05233) as the scale factor rather than $w$ in the [Classifier-Free Guidance paper](https://arxiv.org/abs/2207.12598). In fact, we have $s=w+1$, and:
 
@@ -205,9 +209,48 @@ Interesting facts observed:
 
 
 
+**Quantitative results on CIFAR-10 32x32**:
+
+Note: The images for evaluation are sampled using DDIM with 50 steps.
+
+<table align="center" width=100%>
+  <tr>
+    <th align="center">guidance scale</th>
+    <th align="center">FID ↓</th>
+    <th align="center">IS ↑</th>
+  </tr>
+  <tr>
+    <td align="center">0 (unconditional)</td>
+    <td align="center">6.1983</td>
+    <td align="center">8.9323 (0.1542)</td>
+  </tr>
+  <tr>
+    <td align="center">1 (non-guided conditional)</td>
+    <td align="center">4.6546</td>
+    <td align="center">9.2524 (0.1606)</td>
+  </tr>
+  <tr>
+    <td align="center">3 (unconditional)</td>
+    <td align="center">9.9375</td>
+    <td align="center">9.5522 (0.1013)</td>
+  </tr>
+  <tr>
+    <td align="center">5 (unconditional)</td>
+    <td align="center">13.3187</td>
+    <td align="center">9.4688 (0.1588)</td>
+  </tr>
+</table>
+
+FID measures diversity and IS measures fidelity. This table shows diversity-fidelity trade-off as guidance scale increases.
+
+
+
+
 **Qualitative results**:
 
-<img src="./assets/classifier-free-cifar10.png" />
+<p align="center">
+  <img src="./assets/classifier-free-cifar10.png" />
+</p>
 
 From left to right: $s=0$ (unconditional), $s=1.0$ (non-guided conditional), $s=3.0$, $s=5.0$. Each row corresponds to a class.
 
