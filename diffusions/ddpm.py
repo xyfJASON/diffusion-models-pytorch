@@ -9,10 +9,7 @@ from diffusions.schedule import get_beta_schedule
 
 
 class DDPM:
-    def __init__(self,
-                 betas: Tensor = None,
-                 objective: str = 'pred_eps',
-                 var_type: str = 'fixed_large'):
+    def __init__(self, betas: Tensor = None, objective: str = 'pred_eps', var_type: str = 'fixed_large'):
         assert objective in ['pred_eps', 'pred_x0']
         assert var_type in ['fixed_small', 'fixed_large']
         self.objective = objective

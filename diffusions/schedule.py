@@ -26,3 +26,16 @@ def get_skip_seq(skip_type: str = 'uniform', skip_steps: int = 1000, total_steps
     else:
         raise ValueError(f'skip_type {skip_type} is not valid')
     return seq
+
+
+def _test():
+    seq = get_skip_seq(
+        skip_type='uniform',
+        skip_steps=10,
+        total_steps=1000,
+    )
+    print(seq)
+
+
+if __name__ == '__main__':
+    _test()
