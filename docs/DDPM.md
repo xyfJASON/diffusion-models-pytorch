@@ -27,7 +27,7 @@ python train_ddpm.py -c ./configs/ddpm_cifar10.yaml
 python sample_ddpm.py -c FILE \
                       --model_path MODEL_PATH \
                       [--load_ema] \
-                      [--respace RESPACE] \
+                      [--skip_steps SKIP_STEPS] \
                       --n_samples N_SAMPLES \
                       --save_dir SAVE_DIR \
                       [--batch_size BATCH_SIZE] \
@@ -39,7 +39,7 @@ python sample_ddpm.py -c FILE \
 ```
 
 - To sample on multiple GPUs, replace `python` with `torchrun --nproc_per_node NUM_GPUS`.
-- Use `--respace RESPACE` for faster sampling that skip timesteps. 
+- Use `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps. 
 - Choose a sampling mode by `--mode MODE`, the options are:
   - `sample` (default): randomly sample images
   - `denoise`: sample images with visualization of its denoising process. Use `--n_denoise` to specify the number of images in visualization.

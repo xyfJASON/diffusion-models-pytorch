@@ -10,6 +10,7 @@ from torchvision.utils import save_image
 
 import models
 import diffusions.ddpm
+import diffusions.schedule
 from metrics import AverageMeter
 from engine.tools import build_model, build_optimizer
 from utils.optimizer import optimizer_to_device
@@ -73,11 +74,14 @@ class DDPMTrainer:
         self.logger.info(f'Effective batch size: {effective_batch}')
 
         # BUILD DIFFUSER, MODEL AND OPTIMIZERS
-        self.DiffusionModel = diffusions.ddpm.DDPM(
-            total_steps=self.cfg.DDPM.TOTAL_STEPS,
+        betas = diffusions.schedule.get_beta_schedule(
             beta_schedule=self.cfg.DDPM.BETA_SCHEDULE,
+            total_steps=self.cfg.DDPM.TOTAL_STEPS,
             beta_start=self.cfg.DDPM.BETA_START,
             beta_end=self.cfg.DDPM.BETA_END,
+        )
+        self.DiffusionModel = diffusions.ddpm.DDPM(
+            betas=betas,
             objective=self.cfg.DDPM.OBJECTIVE,
             var_type=self.cfg.DDPM.VAR_TYPE,
         )

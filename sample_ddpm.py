@@ -7,6 +7,7 @@ import torch
 from torchvision.utils import save_image
 
 import diffusions.ddpm
+import diffusions.schedule
 from utils.misc import init_seeds
 from utils.logger import get_logger
 from engine.tools import build_model
@@ -21,7 +22,7 @@ def get_parser():
     # arguments for sampling
     parser.add_argument('--model_path', type=str, required=True, help='path to model weights')
     parser.add_argument('--load_ema', action='store_true', help='whether to load ema weights')
-    parser.add_argument('--respace', type=int, help='number of total timestep for skip sampling')
+    parser.add_argument('--skip_steps', type=int, help='number of timesteps for skip sampling')
     parser.add_argument('--n_samples', type=int, required=True, help='number of samples')
     parser.add_argument('--save_dir', type=str, required=True, help='path to directory saving samples')
     parser.add_argument('--batch_size', type=int, default=1, help='sample by batch is faster')
@@ -140,24 +141,24 @@ if __name__ == '__main__':
     logger.info(f"Number of devices: {get_world_size()}")
 
     # BUILD DIFFUSER
-    if args.respace is None:
+    betas = diffusions.schedule.get_beta_schedule(
+        beta_schedule=cfg.DDPM.BETA_SCHEDULE,
+        total_steps=cfg.DDPM.TOTAL_STEPS,
+        beta_start=cfg.DDPM.BETA_START,
+        beta_end=cfg.DDPM.BETA_END,
+    )
+    if args.skip_steps is None:
         DiffusionModel = diffusions.ddpm.DDPM(
-            total_steps=cfg.DDPM.TOTAL_STEPS,
-            beta_schedule=cfg.DDPM.BETA_SCHEDULE,
-            beta_start=cfg.DDPM.BETA_START,
-            beta_end=cfg.DDPM.BETA_END,
+            betas=betas,
             objective=cfg.DDPM.OBJECTIVE,
             var_type=cfg.DDPM.VAR_TYPE,
         )
     else:
-        skip = cfg.DDPM.TOTAL_STEPS // args.respace
+        skip = cfg.DDPM.TOTAL_STEPS // args.skip_steps
         timesteps = torch.arange(0, cfg.DDPM.TOTAL_STEPS, skip)
-        DiffusionModel = diffusions.ddpm.SpacedDDPM(
+        DiffusionModel = diffusions.ddpm.DDPMSkip(
             timesteps=timesteps,
-            total_steps=cfg.DDPM.TOTAL_STEPS,
-            beta_schedule=cfg.DDPM.BETA_SCHEDULE,
-            beta_start=cfg.DDPM.BETA_START,
-            beta_end=cfg.DDPM.BETA_END,
+            betas=betas,
             objective=cfg.DDPM.OBJECTIVE,
             var_type=cfg.DDPM.VAR_TYPE,
         )

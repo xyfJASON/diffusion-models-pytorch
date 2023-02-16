@@ -5,37 +5,23 @@ from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-def get_beta_schedule(beta_schedule: str = 'linear',
-                      total_steps: int = 1000,
-                      beta_start: float = 0.0001,
-                      beta_end: float = 0.02):
-    if beta_schedule == 'linear':
-        return torch.linspace(beta_start, beta_end, total_steps, dtype=torch.float64)
-    elif beta_schedule == 'quad':
-        return torch.linspace(beta_start ** 0.5, beta_end ** 0.5, total_steps, dtype=torch.float64) ** 2
-    elif beta_schedule == 'const':
-        return torch.full((total_steps, ), fill_value=beta_end, dtype=torch.float64)
-    else:
-        raise ValueError(f'Beta schedule {beta_schedule} is not supported.')
+from diffusions.schedule import get_beta_schedule
 
 
 class DDPM:
     def __init__(self,
-                 total_steps: int = 1000,
-                 beta_schedule: str = 'linear',
-                 beta_start: float = 0.0001,
-                 beta_end: float = 0.02,
+                 betas: Tensor = None,
                  objective: str = 'pred_eps',
                  var_type: str = 'fixed_large'):
-        self.total_steps = total_steps
         assert objective in ['pred_eps', 'pred_x0']
         assert var_type in ['fixed_small', 'fixed_large']
         self.objective = objective
 
         # Define betas, alphas and related terms
-        betas = get_beta_schedule(beta_schedule, total_steps, beta_start, beta_end)
+        if betas is None:
+            betas = get_beta_schedule()
         alphas = 1. - betas
+        self.total_steps = len(betas)
         self.alphas_cumprod = torch.cumprod(alphas, dim=0)
         self.alphas_cumprod_prev = torch.cat((torch.ones(1, dtype=torch.float64), self.alphas_cumprod[:-1]))
 
@@ -162,7 +148,7 @@ class DDPM:
         return sample
 
 
-class SpacedDDPM(DDPM):
+class DDPMSkip(DDPM):
     """
     Code adapted from openai:
     https://github.com/openai/improved-diffusion/blob/main/improved_diffusion/respace.py#L63
@@ -182,32 +168,10 @@ class SpacedDDPM(DDPM):
             betas.append(1 - self.alphas_cumprod[t] / last_alphas_cumprod)
             last_alphas_cumprod = self.alphas_cumprod[t]
         betas = torch.tensor(betas)
-        self.total_steps = len(betas)
 
-        # Reinitialize other parameters based on new betas (directly copied from DDPM)
-        alphas = 1. - betas
-        self.alphas_cumprod = torch.cumprod(alphas, dim=0)
-        self.alphas_cumprod_prev = torch.cat((torch.ones(1, dtype=torch.float64), self.alphas_cumprod[:-1]))
-
-        # q(Xt | X0)
-        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
-        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - self.alphas_cumprod)
-
-        # q(X{t-1} | Xt, X0)
-        self.posterior_variance = betas * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
-        self.posterior_log_variance = torch.log(torch.cat([self.posterior_variance[[1]], self.posterior_variance[1:]]))
-        self.posterior_mean_coef1 = torch.sqrt(self.alphas_cumprod_prev) * betas / (1. - self.alphas_cumprod)
-        self.posterior_mean_coef2 = torch.sqrt(alphas) * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
-
-        # p(X{t-1} | Xt)
-        self.sqrt_recip_alphas_cumprod = torch.sqrt(1. / self.alphas_cumprod)
-        self.sqrt_recipm1_alphas_cumprod = torch.sqrt(1. / self.alphas_cumprod - 1.)
-        if kwargs['var_type'] == 'fixed_small':
-            self.model_variance = self.posterior_variance
-            self.model_log_variance = self.posterior_log_variance
-        else:
-            self.model_variance = betas
-            self.model_log_variance = torch.log(betas)
+        # Reinitialize with new betas
+        kwargs['betas'] = betas
+        super().__init__(**kwargs)
 
     def p_mean_variance(self, model: nn.Module, *args, **kwargs):
         return super().p_mean_variance(self._wrap_model(model), *args, **kwargs)  # noqa
