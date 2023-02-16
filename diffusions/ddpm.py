@@ -1,4 +1,3 @@
-import tqdm
 from typing import List
 
 import torch
@@ -148,33 +147,28 @@ class DDPM:
         return {'sample': sample, 'pred_X0': out['pred_X0']}
 
     @torch.no_grad()
-    def sample_loop(self,
-                    model: nn.Module,
-                    init_noise: Tensor,
-                    clip_denoised: bool = True,
-                    with_tqdm: bool = False,
-                    **kwargs):
+    def sample_loop(self, model: nn.Module, init_noise: Tensor, clip_denoised: bool = True):
         img = init_noise
-        kwargs['disable'] = kwargs.get('disable', False) or (not with_tqdm)
-        for t in tqdm.tqdm(range(self.total_steps-1, -1, -1), **kwargs):
+        for t in range(self.total_steps-1, -1, -1):
             out = self.p_sample(model, img, t, clip_denoised)
             img = out['sample']
             yield out
 
     @torch.no_grad()
-    def sample(self,
-               model: nn.Module,
-               init_noise: Tensor,
-               clip_denoised: bool = True,
-               with_tqdm: bool = False,
-               **kwargs):
+    def sample(self, model: nn.Module, init_noise: Tensor, clip_denoised: bool = True):
         sample = None
-        for out in self.sample_loop(model, init_noise, clip_denoised, with_tqdm, **kwargs):
+        for out in self.sample_loop(model, init_noise, clip_denoised):
             sample = out['sample']
         return sample
 
 
-class DDPMSkip(DDPM):
+class SpacedDDPM(DDPM):
+    """
+    Code adapted from openai:
+    https://github.com/openai/improved-diffusion/blob/main/improved_diffusion/respace.py#L63
+
+    A diffusion process which can skip steps in a base diffusion process.
+    """
     def __init__(self, timesteps: List[int] or Tensor, **kwargs):
         self.timesteps = timesteps
 

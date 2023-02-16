@@ -14,71 +14,37 @@ from torch.utils.data import Subset
 import torchvision.transforms as T
 from torchmetrics.image import FrechetInceptionDistance, InceptionScore
 
-from datasets import ImageDir, build_dataset
+from datasets import ImageDir
 from utils.logger import get_logger
-from utils.dist import init_dist, get_dist_info
-from utils.misc import dict2namespace, get_device
+from utils.data import get_dataloader
+from utils.misc import image_float_to_uint8
+from utils.dist import init_distributed_mode, get_world_size
 
 
-def parse_args():
+def get_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, help='name of ground-truth dataset')
-    parser.add_argument('--dataroot', type=str, help='path to dataroot')
     parser.add_argument('--img_size', type=int, default=32, help='size of images')
     parser.add_argument('--n_eval', type=int, default=50000, help='number of images to evaluate')
+    parser.add_argument('--batch_size', type=int, default=1, help='evaluate by batch size')
+    parser.add_argument('--real_dir', type=str, help='path to the directory containing ground-truth images')
     parser.add_argument('--fake_dir', type=str, help='path to the directory containing fake images')
-    args = parser.parse_args()
-    return args
+    return parser
 
 
-def evaluate(args):
-    # initialize distributed mode, set device
-    init_dist()
-    dist_info = dict2namespace(get_dist_info())
-    device = get_device(dist_info)
-    print(f'Device: {device}')
-
-    # define logger
-    logger = get_logger()
-
-    # ground-truth data
-    test_set = build_dataset(
-        dataset=args.dataset,
-        dataroot=args.dataroot,
-        img_size=args.img_size,
-        split='train',
-    )
-    if args.n_eval < len(test_set):
-        test_set = Subset(test_set, torch.randperm(len(test_set))[:args.n_eval])
-        logger.info(f'Use a subset of test set, {args.n_eval}/{len(test_set)}')
-    elif args.n_eval > len(test_set):
-        logger.warning(f'Size of test set ({len(test_set)}) < n_eval ({args.n_eval}), ignore n_eval')
-
-    # generated data
-    fake_set = ImageDir(
-        root=args.fake_dir,
-        split='',
-        transform=T.Compose([T.Resize((args.img_size, args.img_size)), T.ToTensor()]),
-    )
-    if args.n_eval != len(fake_set):
-        logger.warning(f'Number of fake images ({len(fake_set)}) is not equal to n_eval ({args.n_eval})')
-
-    # define metrics
+def evaluate():
     metric_fid = FrechetInceptionDistance().to(device)
     metric_iscore = InceptionScore().to(device)
 
-    # start evaluating
     logger.info('Sample real images for FID')
-    for real_img in tqdm.tqdm(test_set, desc='Sampling', ncols=120):
-        real_img = real_img[0] if isinstance(real_img, (tuple, list)) else real_img
-        real_img = real_img.unsqueeze(0).to(device)
-        real_img = ((real_img + 1) / 2 * 255).to(dtype=torch.uint8)
+    for real_img in tqdm.tqdm(real_loader, desc='Sampling', ncols=120):
+        real_img = real_img.to(device)
+        real_img = image_float_to_uint8(real_img)
         metric_fid.update(real_img, real=True)
 
     logger.info('Sample fake images for FID and IS')
-    for fake_img in tqdm.tqdm(fake_set, desc='Sampling', ncols=120):
-        fake_img = fake_img.unsqueeze(0).to(device)
-        fake_img = (fake_img * 255).to(dtype=torch.uint8)
+    for fake_img in tqdm.tqdm(fake_loader, desc='Sampling', ncols=120):
+        fake_img = fake_img.to(device)
+        fake_img = image_float_to_uint8(fake_img)
         metric_fid.update(fake_img, real=False)
         metric_iscore.update(fake_img)
 
@@ -90,10 +56,40 @@ def evaluate(args):
     logger.info('End of evaluation')
 
 
-def main():
-    args = parse_args()
-    evaluate(args)
-
-
 if __name__ == '__main__':
-    main()
+    # PARSE ARGS
+    args = get_parser().parse_args()
+
+    # INITIALIZE DISTRIBUTED MODE
+    init_distributed_mode()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # INITIALIZE LOGGER
+    logger = get_logger()
+    logger.info(f'Device: {device}')
+    logger.info(f"Number of devices: {get_world_size()}")
+
+    # BUILD DATASETS
+    transform = T.Compose([
+        T.Resize((args.img_size, args.img_size)),
+        T.ToTensor(),
+    ])
+    real_set = ImageDir(root=args.real_dir, split='', transform=transform)
+    fake_set = ImageDir(root=args.fake_dir, split='', transform=transform)
+
+    if args.n_eval > len(real_set) or args.n_eval > len(fake_set):
+        args.n_eval = min(len(real_set), len(fake_set))
+        logger.warning(f'Change n_eval to {args.n_eval}')
+    if args.n_eval < len(real_set):
+        logger.info(f'Use a subset of ground-truth images, {args.n_eval}/{len(real_set)}')
+        real_set = Subset(real_set, torch.randperm(len(real_set))[:args.n_eval])
+    if args.n_eval < len(fake_set):
+        logger.info(f'Use a subset of fake images, {args.n_eval}/{len(fake_set)}')
+        fake_set = Subset(fake_set, torch.randperm(len(fake_set))[:args.n_eval])
+
+    # BUILD DATALOADER
+    real_loader = get_dataloader(real_set, batch_size=args.batch_size)
+    fake_loader = get_dataloader(fake_set, batch_size=args.batch_size)
+
+    # EVALUATE
+    evaluate()

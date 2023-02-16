@@ -1,14 +1,13 @@
 import os
 import functools
-from typing import List
 
 import torch
-from torch import Tensor
 import torch.distributed as dist
 
 
-def init_dist():
+def init_distributed_mode():
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+        print(f"Distributed init (rank {int(os.environ['RANK'])})", flush=True)
         torch.cuda.set_device(int(os.environ['LOCAL_RANK']))
         dist.init_process_group(backend='nccl')
         dist.barrier()
@@ -16,41 +15,66 @@ def init_dist():
         print('Not using distributed mode')
 
 
-def get_dist_info():
-    if dist.is_available() and dist.is_initialized():
-        world_size = int(os.environ['WORLD_SIZE'])
-        local_rank = int(os.environ['LOCAL_RANK'])
-        global_rank = int(os.environ['RANK'])
-        is_dist = True
-    else:
-        world_size = 1
-        local_rank = global_rank = 0
-        is_dist = False
-    return dict(world_size=world_size,
-                local_rank=local_rank,
-                global_rank=global_rank,
-                is_master=(global_rank == 0),
-                is_dist=is_dist)
+def is_dist_avail_and_initialized():
+    if not dist.is_available():
+        return False
+    if not dist.is_initialized():
+        return False
+    return True
 
 
-def master_only(func):
+def get_world_size():
+    if not is_dist_avail_and_initialized():
+        return 1
+    return dist.get_world_size()
+
+
+def get_rank():
+    if not is_dist_avail_and_initialized():
+        return 0
+    return dist.get_rank()
+
+
+def get_local_rank():
+    if not is_dist_avail_and_initialized():
+        return 0
+    return int(os.environ['LOCAL_RANK'])
+
+
+def is_main_process():
+    return get_rank() == 0
+
+
+def main_process_only(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        if get_dist_info()['is_master']:
+        if is_main_process():
             return func(*args, **kwargs)
     return wrapper
 
 
-def reduce_tensor(tensor: Tensor, n: int = None):
-    dist_info = get_dist_info()
-    if dist_info['is_dist'] is False:
+def sync_params(params):
+    for p in params:
+        with torch.no_grad():
+            dist.broadcast(p, 0)
+
+
+def all_reduce_mean(tensor):
+    world_size = get_world_size()
+    if world_size > 1:
+        rt = tensor.clone() / world_size
+        dist.all_reduce(rt)
+        return rt
+    else:
         return tensor
-    if n is None:
-        n = dist_info['world_size']
-    rt = tensor.clone() / n
-    dist.all_reduce(rt, op=dist.ReduceOp.SUM)
-    return rt
 
 
-def reduce_tensors(tensors: List[Tensor], n: int = None):
-    return [reduce_tensor(tensor, n) for tensor in tensors]
+def broadcast_objects(objects):
+    if is_dist_avail_and_initialized():
+        islist = isinstance(objects, list)
+        if not islist:
+            objects = [objects]
+        dist.broadcast_object_list(objects, src=0)
+        if not islist:
+            objects = objects[0]
+    return objects

@@ -1,66 +1,30 @@
 import os
 import tqdm
 import logging
-from typing import Dict
+from typing import Dict, List
 
-from utils.dist import master_only, get_dist_info
-
-
-class AverageMeter:
-    def __init__(self):
-        self.val = 0.
-        self.avg = 0.
-        self.sum = 0.
-        self.count = 0
-
-    def reset(self):
-        self.val = 0.
-        self.avg = 0.
-        self.sum = 0.
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
+from utils.dist import main_process_only, is_main_process
 
 
-class MessageLogger:
-    def __init__(self, log_root: str = None, print_freq: int = 0):
-        assert isinstance(print_freq, int) and print_freq >= 0
+class StatusTracker:
+    def __init__(self, logger, exp_dir: str, print_freq: int = 0):
+        self.logger = logger
         self.print_freq = print_freq
-        # logging
-        if log_root is not None:
-            self.logger = get_logger(log_file=os.path.join(log_root, 'output.log'), file_mode='a')
-        else:
-            self.logger = get_logger()
-        # tensorboard
-        if log_root is not None:
-            self.tb_logger = get_tb_writer(log_dir=os.path.join(log_root, 'tensorboard'))
-        else:
-            self.tb_logger = None
-
-    def info(self, msg: str, *args, **kwargs):
-        self.logger.info(msg, *args, **kwargs)
-
-    def warning(self, msg: str, *args, **kwargs):
-        self.logger.warning(msg, *args, **kwargs)
-
-    def error(self, msg: str, *args, **kwargs):
-        self.logger.error(msg, *args, **kwargs)
+        self.tb_writer = None
+        if exp_dir is not None:
+            self.tb_writer = get_tb_writer(log_dir=os.path.join(exp_dir, 'tensorboard'))
 
     def close(self):
-        if self.tb_logger:
-            self.tb_logger.close()
+        if self.tb_writer is not None:
+            self.tb_writer.close()
 
-    def track_status(self, name: str, status: Dict, global_step: int, epoch: int, iteration: int = None):
-        message = f'[{name}] epoch: {epoch}' + ('' if iteration is None else f', iteration: {iteration}')
-        for k, v in status.items():
+    def track_status(self, name: str, status: Dict, step: int, write_tb: List[bool] = None):
+        message = f'[{name}] step: {step}'
+        for i, (k, v) in enumerate(status.items()):
             message += f', {k}: {v:.6f}'
-            if self.tb_logger:
-                self.tb_logger.add_scalar(f'{name}/{k}', v, global_step)
-        if self.print_freq and (global_step + 1) % self.print_freq == 0:
+            if self.tb_writer is not None and (write_tb is None or write_tb[i] is True):
+                self.tb_writer.add_scalar(f'{name}/{k}', v, step)
+        if self.print_freq > 0 and (step + 1) % self.print_freq == 0:
             self.logger.info(message)
 
 
@@ -77,19 +41,20 @@ class TqdmLoggingHandler(logging.Handler):
             self.handleError(record)
 
 
-def get_logger(name='exp', log_file=None, log_level=logging.INFO, file_mode='w'):
+def get_logger(name='exp', log_file=None, log_level=logging.INFO, file_mode='w', use_tqdm_handler: bool = False):
     """ Modified from https://github.com/open-mmlab/mmcv/blob/master/mmcv/utils/logging.py """
     logger = logging.getLogger(name)
     # Check if the logger exists
     if logger.hasHandlers():
         return logger
     # Add a stream handler
-    # stream_handler = logging.StreamHandler()
-    stream_handler = TqdmLoggingHandler()
+    if not use_tqdm_handler:
+        stream_handler = logging.StreamHandler()
+    else:
+        stream_handler = TqdmLoggingHandler()
     handlers = [stream_handler]
-    # Add a file handler for master process (global rank == 0)
-    global_rank = get_dist_info()['global_rank']
-    if global_rank == 0 and log_file is not None:
+    # Add a file handler for main process
+    if is_main_process() and log_file is not None:
         file_handler = logging.FileHandler(log_file, file_mode)
         handlers.append(file_handler)
     # Set format & level for all handlers
@@ -97,13 +62,13 @@ def get_logger(name='exp', log_file=None, log_level=logging.INFO, file_mode='w')
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     for handler in handlers:
         handler.setFormatter(formatter)
-        handler.setLevel(log_level if global_rank == 0 else logging.ERROR)
+        handler.setLevel(log_level if is_main_process() else logging.ERROR)
         logger.addHandler(handler)
-    logger.setLevel(log_level if global_rank == 0 else logging.ERROR)
+    logger.setLevel(log_level if is_main_process() else logging.ERROR)
     return logger
 
 
-@master_only
+@main_process_only
 def get_tb_writer(log_dir):
     from torch.utils.tensorboard import SummaryWriter
     os.makedirs(log_dir, exist_ok=True)
