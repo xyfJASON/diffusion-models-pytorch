@@ -87,6 +87,8 @@ Same as DDPM. Please refer to [DDPM doc](./DDPM.md).
     <td align="center">9.4688 (0.1588)</td>
   </tr>
 </table>
+
+
 - The images are sampled using DDIM with 50 steps.
 - All the metrics are evaluated on 50K samples.
 - FID measures diversity and IS measures fidelity. This table shows diversity-fidelity trade-off as guidance scale increases.
@@ -98,5 +100,7 @@ Same as DDPM. Please refer to [DDPM doc](./DDPM.md).
 <p align="center">
   <img src="../assets/classifier-free-cifar10.png" />
 </p>
+
+
 From left to right: $s=0$ (unconditional), $s=1.0$ (non-guided conditional), $s=3.0$, $s=5.0$. Each row corresponds to a class.
 
