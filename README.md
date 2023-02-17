@@ -8,6 +8,7 @@ My implementations of Diffusion Models with PyTorch.
 
 - [x] DDPM
 - [x] DDIM
+- [x] Classifier-Free Guidance
 
 <br/>
 
@@ -38,4 +39,12 @@ For instructions on training / sampling / evaluation and more quantitative & qua
   <img src="./assets/ddim-cifar10.png" width=39% />
   <img src="./assets/ddim-cifar10-interpolate.png" width=50% />
 </p>
+<br/>
 
+
+
+## Classifier-Free Guidance \[<a href="https://arxiv.org/abs/2207.12598">paper</a>\]
+
+<p align="center">
+  <img src="./assets/classifier-free-cifar10.png" />
+</p>

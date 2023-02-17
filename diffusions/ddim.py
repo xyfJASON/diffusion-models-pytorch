@@ -115,7 +115,7 @@ class DDIMSkip(DDIM):
     def __init__(self, timesteps: List[int] or Tensor, **kwargs):
         self.timesteps = timesteps
 
-        # Initialize the original DDPM
+        # Initialize the original DDIM
         super().__init__(**kwargs)
 
         # Define new beta sequence

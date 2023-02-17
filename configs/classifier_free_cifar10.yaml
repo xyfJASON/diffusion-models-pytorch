@@ -5,6 +5,7 @@ DATA:
   DATAROOT: /data/CIFAR-10/
   IMG_SIZE: 32
   IMG_CHANNELS: 3
+  NUM_CLASSES: 10
 
 
 DATALOADER:
@@ -16,22 +17,23 @@ DATALOADER:
 
 
 MODEL:
-  TYPE: unet
+  TYPE: unet_cond
   DIM: 128
   DIM_MULTS: [1, 2, 2, 2]
-  USE_ATTN: [false, true, false, false]
+  USE_ATTN: [false, true, true, false]
   NUM_RES_BLOCKS: 2
   RESBLOCK_GROUPS: 32
   ATTN_GROUPS: 32
-  ATTN_HEADS: 1
+  ATTN_HEAD_DIMS: 64
+  RESBLOCK_UPDOWN: true
   DROPOUT: 0.1
   EMA_DECAY: 0.9999
   WEIGHTS: ~
 
 
-DDPM:
+CLASSIFIER_FREE:
   TOTAL_STEPS: 1000
-  BETA_SCHEDULE: linear
+  BETA_SCHEDULE: cosine
   BETA_START: 0.0001
   BETA_END: 0.02
   OBJECTIVE: pred_eps
@@ -45,6 +47,8 @@ TRAIN:
   SAMPLE_FREQ: 1000
   SAVE_FREQ: 10000
 
+  P_UNCOND: 0.2
+
   OPTIM:
-    TYPE: Adam
+    TYPE: AdamW
     LR: 0.0002
