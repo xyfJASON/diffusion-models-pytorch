@@ -18,7 +18,17 @@ def build_model(cfg: CN):
         )
     elif cfg.MODEL.TYPE.lower() == 'unet_cond':
         model = models.UNetConditional(
-
+            img_channels=cfg.DATA.IMG_CHANNELS,
+            dim=cfg.MODEL.DIM,
+            dim_mults=cfg.MODEL.DIM_MULTS,
+            use_attn=cfg.MODEL.USE_ATTN,
+            num_res_blocks=cfg.MODEL.NUM_RES_BLOCKS,
+            num_classes=cfg.DATA.NUM_CLASSES,
+            resblock_groups=cfg.MODEL.RESBLOCK_GROUPS,
+            attn_groups=cfg.MODEL.ATTN_GROUPS,
+            attn_head_dims=cfg.MODEL.ATTN_HEAD_DIMS,
+            resblock_updown=cfg.MODEL.RESBLOCK_UPDOWN,
+            dropout=cfg.MODEL.DROPOUT,
         )
     else:
         raise ValueError
@@ -41,6 +51,13 @@ def build_optimizer(params, cfg: CN):
             lr=cfg.LR,
             betas=getattr(cfg, 'BETAS', (0.9, 0.999)),
             weight_decay=getattr(cfg, 'WEIGHT_DECAY', 0),
+        )
+    elif cfg.TYPE == 'AdamW':
+        optimizer = optim.AdamW(
+            params=params,
+            lr=cfg.LR,
+            betas=getattr(cfg, 'BETAS', (0.9, 0.999)),
+            weight_decay=getattr(cfg, 'WEIGHT_DECAY', 0.01),
         )
     else:
         raise ValueError(f"Optimizer {cfg.TYPE} is not supported.")

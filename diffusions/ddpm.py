@@ -116,24 +116,25 @@ class DDPM:
                 self._extract(self.sqrt_recipm1_alphas_cumprod, t) * eps)
 
     @torch.no_grad()
-    def p_sample(self, model: nn.Module, Xt: Tensor, t: int, clip_denoised: bool = True):
+    def p_sample(self, model: nn.Module, Xt: Tensor, t: Tensor, clip_denoised: bool = True):
         """ Sample from p_theta(X{t-1} | Xt)
         Args:
             model (nn.Module): UNet model
             Xt (Tensor): [bs, C, H, W]
-            t (int): time step for all samples in Xt
+            t (Tensor): [bs], time steps
             clip_denoised (bool): whether to clip predicted X0 to range [-1, 1]
         """
-        t_batch = torch.full((Xt.shape[0], ), t, device=Xt.device, dtype=torch.long)
-        out = self.p_mean_variance(model, Xt, t_batch, clip_denoised)
-        sample = out['mean'] if t == 0 else out['mean'] + torch.exp(0.5 * out['log_var']) * torch.randn_like(Xt)
+        out = self.p_mean_variance(model, Xt, t, clip_denoised)
+        nonzero_mask = torch.ne(t, 0).float().view(-1, 1, 1, 1)
+        sample = out['mean'] + nonzero_mask * torch.exp(0.5 * out['log_var']) * torch.randn_like(Xt)
         return {'sample': sample, 'pred_X0': out['pred_X0']}
 
     @torch.no_grad()
     def sample_loop(self, model: nn.Module, init_noise: Tensor, clip_denoised: bool = True):
         img = init_noise
         for t in range(self.total_steps-1, -1, -1):
-            out = self.p_sample(model, img, t, clip_denoised)
+            t_batch = torch.full((img.shape[0], ), t, device=img.device, dtype=torch.long)
+            out = self.p_sample(model, img, t_batch, clip_denoised)
             img = out['sample']
             yield out
 

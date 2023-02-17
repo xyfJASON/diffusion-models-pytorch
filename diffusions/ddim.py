@@ -48,27 +48,26 @@ class DDIM:
         return pred_eps, pred_X0
 
     @torch.no_grad()
-    def p_sample(self, model: nn.Module, Xt: Tensor, t: int, clip_denoised: bool = True):
+    def p_sample(self, model: nn.Module, Xt: Tensor, t: Tensor, clip_denoised: bool = True):
         """ Sample from p_theta(X{t-1} | Xt) """
-        t_batch = torch.full((Xt.shape[0], ), t, device=Xt.device, dtype=torch.long)
-        pred_eps, pred_X0 = self.predict_with_model(model, Xt, t_batch, clip_denoised)
-        alphas_cumprod_t = self._extract(self.alphas_cumprod, t_batch)
-        alphas_cumprod_prev_t = self._extract(self.alphas_cumprod_prev, t_batch)
+        pred_eps, pred_X0 = self.predict_with_model(model, Xt, t, clip_denoised)
+        alphas_cumprod_t = self._extract(self.alphas_cumprod, t)
+        alphas_cumprod_prev_t = self._extract(self.alphas_cumprod_prev, t)
         var_t = ((self.eta ** 2) *
                  (1. - alphas_cumprod_prev_t) / (1. - alphas_cumprod_t) *
                  (1. - alphas_cumprod_t / alphas_cumprod_prev_t))
         mean_t = (torch.sqrt(alphas_cumprod_prev_t) * pred_X0 +
                   torch.sqrt(1. - alphas_cumprod_prev_t - var_t) * pred_eps)
-        sample = mean_t if t == 0 else mean_t + torch.sqrt(var_t) * torch.randn_like(Xt)
+        nonzero_mask = torch.ne(t, 0).float().view(-1, 1, 1, 1)
+        sample = mean_t + nonzero_mask * torch.sqrt(var_t) * torch.randn_like(Xt)
         return {'sample': sample, 'pred_X0': pred_X0}
 
     @torch.no_grad()
-    def p_sample_inversion(self, model: nn.Module, Xt: Tensor, t: int, clip_denoised: bool = True):
+    def p_sample_inversion(self, model: nn.Module, Xt: Tensor, t: Tensor, clip_denoised: bool = True):
         """ Sample X{t+1} from Xt, only valid for DDIM (eta=0) """
         assert self.eta == 0., 'DDIM inversion is only valid when eta=0'
-        t_batch = torch.full((Xt.shape[0], ), t, device=Xt.device, dtype=torch.long)
-        pred_eps, pred_X0 = self.predict_with_model(model, Xt, t_batch, clip_denoised)
-        alphas_cumprod_next_t = self._extract(self.alphas_cumprod_next, t_batch)
+        pred_eps, pred_X0 = self.predict_with_model(model, Xt, t, clip_denoised)
+        alphas_cumprod_next_t = self._extract(self.alphas_cumprod_next, t)
         sample = torch.sqrt(alphas_cumprod_next_t) * pred_X0 + torch.sqrt(1. - alphas_cumprod_next_t) * pred_eps
         return {'sample': sample, 'pred_X0': pred_X0}
 
@@ -76,7 +75,8 @@ class DDIM:
     def sample_loop(self, model: nn.Module, init_noise: Tensor, clip_denoised: bool = True):
         img = init_noise
         for t in range(self.total_steps-1, -1, -1):
-            out = self.p_sample(model, img, t, clip_denoised)
+            t_batch = torch.full((img.shape[0], ), t, device=img.device, dtype=torch.long)
+            out = self.p_sample(model, img, t_batch, clip_denoised)
             img = out['sample']
             yield out
 
@@ -91,7 +91,8 @@ class DDIM:
     def sample_inversion_loop(self, model: nn.Module, img: Tensor, clip_denoised: bool = True):
         assert self.eta == 0., 'DDIM inversion is only valid when eta=0'
         for t in range(self.total_steps):
-            out = self.p_sample_inversion(model, img, t, clip_denoised)
+            t_batch = torch.full((img.shape[0], ), t, device=img.device, dtype=torch.long)
+            out = self.p_sample_inversion(model, img, t_batch, clip_denoised)
             img = out['sample']
             yield out
 
