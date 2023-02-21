@@ -1,42 +1,94 @@
 import os
+import yaml
 import math
 import argparse
 from functools import partial
-from yacs.config import CfgNode as CN
 
 import torch
 from torchvision.utils import save_image
 
-import diffusions.classifier_free
-import diffusions.schedule
-from utils.misc import init_seeds
-from utils.logger import get_logger
+import diffusions
 from engine.tools import build_model
+from utils.logger import get_logger
+from utils.misc import init_seeds, add_args
 from utils.dist import init_distributed_mode, get_rank, get_world_size
 
 
-def get_parser():
+def parse_args():
     parser = argparse.ArgumentParser()
-    # load basic configuration from file, including parameter of data, model and diffuser
-    parser.add_argument('-c', '--config', metavar='FILE', required=True,
-                        help='path to configuration file')
+    # data configuration file
+    parser.add_argument(
+        '--config_data', type=str, required=True,
+        help='Path to data configuration file',
+    )
+    # model configuration file
+    parser.add_argument(
+        '--config_model', type=str, required=True,
+        help='Path to model configuration file',
+    )
+    # diffusion configuration file
+    parser.add_argument(
+        '--config_diffusion', type=str, required=True,
+        help='Path to diffusion configuration file',
+    )
     # arguments for sampling
-    parser.add_argument('--model_path', type=str, required=True, help='path to model weights')
-    parser.add_argument('--load_ema', action='store_true', help='whether to load ema weights')
-    parser.add_argument('--n_samples_each_class', type=int, required=True, help='number of samples')
-    parser.add_argument('--guidance_scale', type=float, required=True,
-                        help='guidance scale. 0 for unconditional generation, '
-                             '1 for non-guided generation, >1 for guided generation')
-    parser.add_argument('--skip_steps', type=int, help='number of timesteps for skip sampling')
-    parser.add_argument('--ddim', action='store_true', help='use DDIM deterministic sampling')
-    parser.add_argument('--ddim_eta', type=float, default=0.0, help='eta in DDIM')
-    parser.add_argument('--save_dir', type=str, required=True, help='path to directory saving samples')
-    parser.add_argument('--batch_size', type=int, default=1, help='sample by batch is faster')
-    parser.add_argument('--seed', type=int, default=2022, help='random seed')
-    # modify basic configuration in yaml file
-    parser.add_argument('--opts', default=[], nargs=argparse.REMAINDER,
-                        help="modify config options using the command-line 'KEY VALUE' pairs")
-    return parser
+    parser.add_argument(
+        '--seed', type=int, default=2022,
+        help='Set random seed',
+    )
+    parser.add_argument(
+        '--weights', type=str, required=True,
+        help='Path to pretrained model weights',
+    )
+    parser.add_argument(
+        '--load_ema', type=bool, default=True,
+        help='Whether to load ema weights',
+    )
+    parser.add_argument(
+        '--skip_steps', type=int, default=None,
+        help='Number of timesteps for skip sampling',
+    )
+    parser.add_argument(
+        '--n_samples_each_class', type=int, required=True,
+        help='Number of samples in each class',
+    )
+    parser.add_argument(
+        '--guidance_scale', type=float, required=True,
+        help='guidance scale. 0 for unconditional generation, '
+             '1 for non-guided generation, >1 for guided generation',
+    )
+    parser.add_argument(
+        '--ddim', action='store_true',
+        help='Use DDIM deterministic sampling',
+    )
+    parser.add_argument(
+        '--ddim_eta', type=float, default=0.0,
+        help='Parameter eta in DDIM sampling',
+    )
+    parser.add_argument(
+        '--save_dir', type=str, required=True,
+        help='Path to directory saving samples',
+    )
+    parser.add_argument(
+        '--batch_size', type=int, default=1,
+        help='Batch size. Sample by batch is much faster',
+    )
+
+    tmp_args = parser.parse_known_args()[0]
+    # merge data configurations
+    with open(tmp_args.config_data, 'r') as f:
+        config_data = yaml.safe_load(f)
+    add_args(parser, config_data, prefix='data_')
+    # merge model configurations
+    with open(tmp_args.config_model, 'r') as f:
+        config_model = yaml.safe_load(f)
+    add_args(parser, config_model, prefix='model_')
+    # merge diffusion configurations
+    with open(tmp_args.config_diffusion, 'r') as f:
+        config_diffusion = yaml.safe_load(f)
+    add_args(parser, config_diffusion, prefix='diffusion_')
+
+    return parser.parse_args()
 
 
 @torch.no_grad()
@@ -47,14 +99,14 @@ def sample():
     num_each_device = args.n_samples_each_class // get_world_size()
 
     total_folds = math.ceil(num_each_device / args.batch_size)
-    img_shape = (cfg.DATA.IMG_CHANNELS, cfg.DATA.IMG_SIZE, cfg.DATA.IMG_SIZE)
+    img_shape = (args.data_img_channels, args.data_img_size, args.data_img_size)
 
     if args.ddim:
         sample_fn = partial(DiffusionModel.ddim_sample, eta=args.ddim_eta)
     else:
         sample_fn = DiffusionModel.sample
 
-    for c in range(cfg.DATA.NUM_CLASSES):
+    for c in range(args.data_num_classes):
         logger.info(f'Sampling class {c}')
         for i in range(total_folds):
             n = min(args.batch_size, num_each_device - i * args.batch_size)
@@ -77,14 +129,7 @@ def sample():
 
 
 if __name__ == '__main__':
-    # PARSE ARGS AND CONFIGS
-    args = get_parser().parse_args()
-    cfg = CN(new_allowed=True)
-    cfg.merge_from_file(args.config)
-    cfg.set_new_allowed(False)
-    if args.opts is not None:
-        cfg.merge_from_list(args.opts)
-    cfg.freeze()
+    args = parse_args()
 
     # INITIALIZE DISTRIBUTED MODE
     init_distributed_mode()
@@ -100,36 +145,36 @@ if __name__ == '__main__':
 
     # BUILD DIFFUSER
     betas = diffusions.schedule.get_beta_schedule(
-        beta_schedule=cfg.CLASSIFIER_FREE.BETA_SCHEDULE,
-        total_steps=cfg.CLASSIFIER_FREE.TOTAL_STEPS,
-        beta_start=cfg.CLASSIFIER_FREE.BETA_START,
-        beta_end=cfg.CLASSIFIER_FREE.BETA_END,
+        beta_schedule=args.diffusion_beta_schedule,
+        total_steps=args.diffusion_total_steps,
+        beta_start=args.diffusion_beta_start,
+        beta_end=args.diffusion_beta_end,
     )
     if args.skip_steps is None:
         DiffusionModel = diffusions.classifier_free.ClassifierFree(
             betas=betas,
-            objective=cfg.CLASSIFIER_FREE.OBJECTIVE,
-            var_type=cfg.CLASSIFIER_FREE.VAR_TYPE,
+            objective=args.diffusion_objective,
+            var_type=args.diffusion_var_type,
         )
     else:
-        skip = cfg.CLASSIFIER_FREE.TOTAL_STEPS // args.skip_steps
-        timesteps = torch.arange(0, cfg.CLASSIFIER_FREE.TOTAL_STEPS, skip)
+        skip = args.diffusion_total_steps // args.skip_steps
+        timesteps = torch.arange(0, args.diffusion_total_steps, skip)
         DiffusionModel = diffusions.classifier_free.ClassifierFreeSkip(
             timesteps=timesteps,
             betas=betas,
-            objective=cfg.CLASSIFIER_FREE.OBJECTIVE,
-            var_type=cfg.CLASSIFIER_FREE.VAR_TYPE,
+            objective=args.diffusion_objective,
+            var_type=args.diffusion_var_type,
         )
 
     # BUILD MODEL
-    model = build_model(cfg)
+    model = build_model(args)
     model.to(device=device)
     model.eval()
 
     # LOAD WEIGHTS
-    ckpt = torch.load(args.model_path, map_location='cpu')
+    ckpt = torch.load(args.weights, map_location='cpu')
     model.load_state_dict(ckpt['ema']['shadow'] if args.load_ema else ckpt['model'])
-    logger.info(f'Successfully load model from {args.model_path}')
+    logger.info(f'Successfully load model from {args.weights}')
 
     # SAMPLE
     sample()

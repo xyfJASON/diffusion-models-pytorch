@@ -1,0 +1,4 @@
+name: CelebA-HQ
+dataroot: /data/CelebA-HQ/
+img_size: 256
+img_channels: 3

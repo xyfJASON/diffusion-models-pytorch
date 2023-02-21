@@ -70,7 +70,7 @@ class DDIM(DDPM):
 
     @torch.no_grad()
     def ddim_sample_inversion_loop(self, model: nn.Module, img: Tensor, clip_denoised: bool = True, eta: float = None):
-        for t in range(self.total_steps):
+        for t in range(self.total_steps - 1):
             t_batch = torch.full((img.shape[0], ), t, device=img.device, dtype=torch.long)
             out = self.ddim_p_sample_inversion(model, img, t_batch, clip_denoised, eta)
             img = out['sample']

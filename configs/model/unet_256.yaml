@@ -1,0 +1,11 @@
+type: unet
+in_channels: 3
+out_channels: 3
+dim: 128
+dim_mults: [1, 1, 2, 2, 4, 4]
+use_attn: [false, false, false, false, true, false]
+num_res_blocks: 2
+resblock_groups: 32
+attn_groups: 32
+attn_heads: 1
+dropout: 0.0

@@ -55,11 +55,9 @@ class DDPM:
         if self.objective == 'pred_eps':
             pred_eps = model(Xt, t)
             return F.mse_loss(pred_eps, eps)
-        elif self.objective == 'pred_x0':
+        else:
             pred_x0 = model(Xt, t)
             return F.mse_loss(pred_x0, X0)
-        else:
-            raise ValueError
 
     def q_sample(self, X0: Tensor, t: Tensor, eps: Tensor = None):
         """ Sample from q(Xt | X0)

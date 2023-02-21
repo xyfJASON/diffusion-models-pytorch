@@ -7,16 +7,46 @@
 ## Training
 
 ```shell
-python train_classifier_free.py -c FILE -n NAME [--opts KEY1 VALUE1 KEY2 VALUE2 ...]
+python train_classifier_free.py --config_data CONFIG_DATA \
+                                --config_model CONFIG_MODEL \
+                                --config_diffusion CONFIG_DIFFUSION \
+                                [--name NAME] \
+                                [--no_interaction] \
+                                [--seed SEED] \
+                                [--num_workers NUM_WORKERS] \
+                                [--pin_memory PIN_MEMORY] \
+                                [--prefetch_factor PREFETCH_FACTOR] \
+                                [--batch_size BATCH_SIZE] \
+                                [--micro_batch MICRO_BATCH] \
+                                [--weights WEIGHTS] \
+                                [--resume RESUME] \
+                                [--train_steps TRAIN_STEPS] \
+                                [--print_freq PRINT_FREQ] \
+                                [--sample_freq SAMPLE_FREQ] \
+                                [--save_freq SAVE_FREQ] \
+                                [--ema_decay EMA_DECAY] \
+                                [--ema_gradual EMA_GRADUAL] \
+                                [--p_uncond P_UNCOND] \
+                                [--optim_type OPTIM_TYPE] \
+                                [--lr LR] \
+                                [--data_*** ***] \
+                                [--model_*** ***] \
+                                [--diffusion_*** ***]
 ```
 
 - To train on multiple GPUs, replace `python` with `torchrun --nproc_per_node NUM_GPUS`.
+- Pass your data configuration file to `--config_data`. Some examples are under `./configs/data/`. Besides creating a new file, you may also override keys by `--data_{key} {value}`.
+
+  This also applies to the model and diffusion configurations.
+
 - An experiment directory will be created under `./runs/` for each run, which is named after `NAME`, or the current time if `NAME` is not specified. The directory contains logs, checkpoints, tensorboard, etc.
 
-For example, to train on CIFAR-10:
+For example, to train on CIFAR-10 with default settings:
 
 ```shell
-python train_classifier_free.py -c ./configs/classifier_free_cifar10.yaml
+python train_classifier_free.py --config_data ./configs/data/cifar10.yaml \
+                                --config_model ./configs/model/unet_cond.yaml \
+                                --config_diffusion ./configs/diffusion/classifier_free_1000_cosine_fixedlarge.yaml
 ```
 
 
@@ -24,18 +54,22 @@ python train_classifier_free.py -c ./configs/classifier_free_cifar10.yaml
 ## Sampling
 
 ```shell
-python sample_classifier_free.py -c FILE \
-                                 --model_path MODEL_PATH \
-                                 [--load_ema] \
+python sample_classifier_free.py --config_data CONFIG_DATA \
+                                 --config_model CONFIG_MODEL \
+                                 --config_diffusion CONFIG_DIFFUSION \
+                                 [--seed SEED] \
+                                 --weights WEIGHTS \
+                                 [--load_ema LOAD_EMA] \
+                                 [--skip_steps SKIP_STEPS] \
                                  --n_samples_each_class N_SAMPLES_EACH_CLASS \
                                  --guidance_scale GUIDANCE_SCALE \
-                                 [--skip_steps SKIP_STEPS] \
                                  [--ddim] \
                                  [--ddim_eta DDIM_ETA] \
                                  --save_dir SAVE_DIR \
-                                 [--batch_size BATCH_SIZE] 
-                                 [--seed SEED] \
-                                 [--opts KEY1 VALUE1 KEY2 VALUE2 ...]
+                                 [--batch_size BATCH_SIZE] \
+                                 [--data_*** ***] \
+                                 [--model_*** ***] \
+                                 [--diffusion_*** ***]
 ```
 
 - To sample on multiple GPUs, replace `python` with `torchrun --nproc_per_node NUM_GPUS`.
@@ -95,7 +129,7 @@ Same as DDPM. Please refer to [DDPM doc](./DDPM.md).
 
 
 
-**Qualitative results**:
+**Samples with different guidance scale**:
 
 <p align="center">
   <img src="../assets/classifier-free-cifar10.png" />
