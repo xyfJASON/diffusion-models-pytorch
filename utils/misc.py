@@ -77,6 +77,8 @@ def add_args(parser: ArgumentParser, cfg: Dict, prefix: str = ''):
             add_args(parser, v, prefix + k + '_')
         elif isinstance(v, (list, tuple)):
             parser.add_argument('--' + prefix + k, type=type(v[0]), nargs='+', default=v)
+        elif v is None:
+            parser.add_argument('--' + prefix + k, default=None)
         else:
             print(f'cannot parse key {prefix + k} of type {type(v)}')
     return parser

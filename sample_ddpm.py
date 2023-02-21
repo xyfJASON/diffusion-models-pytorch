@@ -6,6 +6,7 @@ import argparse
 import torch
 from torchvision.utils import save_image
 
+import models
 import diffusions
 from engine.tools import build_model
 from utils.logger import get_logger
@@ -214,7 +215,10 @@ if __name__ == '__main__':
 
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
-    model.load_state_dict(ckpt['ema']['shadow'] if args.load_ema else ckpt['model'])
+    if isinstance(model, (models.UNet, models.UNetConditional)):
+        model.load_state_dict(ckpt['ema']['shadow'] if args.load_ema else ckpt['model'])
+    else:
+        model.load_state_dict(ckpt)
     logger.info(f'Successfully load model from {args.weights}')
 
     # SAMPLE

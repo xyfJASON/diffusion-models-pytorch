@@ -1,0 +1,5 @@
+name: ImageNet
+dataroot: /data/ImageNet/
+img_size: 256
+img_channels: 3
+num_classes: 1000

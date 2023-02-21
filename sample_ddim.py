@@ -160,7 +160,6 @@ def sample_reconstruction():
     for i, X in enumerate(test_loader):
         X = X[0] if isinstance(X, (tuple, list)) else X
         X = X.to(device=device, dtype=torch.float32)
-        # X[:, :, 32:150, 96:240] = 0.
         noise = DiffusionModel.ddim_sample_inversion(model=model, img=X)
         recX = DiffusionModel.ddim_sample(model=model, init_noise=noise)
         for j, (x, r) in enumerate(zip(X, recX)):
@@ -200,6 +199,7 @@ if __name__ == '__main__':
         DiffusionModel = diffusions.DDIM(
             betas=betas,
             objective=args.diffusion_objective,
+            var_type=args.diffusion_var_type,
             eta=args.ddim_eta,
         )
     else:
@@ -209,6 +209,7 @@ if __name__ == '__main__':
             timesteps=timesteps,
             betas=betas,
             objective=args.diffusion_objective,
+            var_type=args.diffusion_var_type,
             eta=args.ddim_eta,
         )
 
