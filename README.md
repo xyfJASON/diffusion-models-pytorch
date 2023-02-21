@@ -48,3 +48,21 @@ For instructions on training / sampling / evaluation and more quantitative & qua
 <p align="center">
   <img src="./assets/classifier-free-cifar10.png" />
 </p>
+<br/>
+
+
+
+## Sampling Algorithms: Fidelity-Speed Visualization
+
+I use the same model in all tests, which is trained following the standard DDPM. Thus the comparison depends only on the performance of different sampling algorithms (or SDE/ODE solvers).
+
+<p align="center">
+  <img src="./assets/fidelity-speed-visualization.png" width=80% />
+</p>
+
+
+Interesting facts observed:
+
+- DDPM (fixed-large) performs better than DDPM (fixed-small) with 1000 steps, but degrades drastically as the number of steps decreases. If you check on the samples from DDPM (fixed-large) (<= 100 steps), you'll find that they still contain noticeable noises.
+- DDPM (fixed-small) and DDIM (eta=1) are theoretically the same, and indeed, their curves are very close, especially in the FID case.
+

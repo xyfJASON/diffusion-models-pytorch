@@ -1,9 +1,12 @@
 import os
 import sys
+import yaml
 import random
 import shutil
 import datetime
 import numpy as np
+from typing import Dict
+from argparse import ArgumentParser
 
 import torch
 import torch.nn as nn
@@ -59,7 +62,27 @@ def get_bare_model(model: nn.Module or DDP):
     return model.module if isinstance(model, (nn.DataParallel, DDP)) else model
 
 
-def find_resume_checkpoint(exp_dir, resume):
+def add_args(parser: ArgumentParser, cfg: Dict, prefix: str = ''):
+    """ Adapted from https://github.com/open-mmlab/mmcv/blob/master/mmcv/utils/config.py#L53 """
+    for k, v in cfg.items():
+        if isinstance(v, str):
+            parser.add_argument('--' + prefix + k, default=v)
+        elif isinstance(v, int):
+            parser.add_argument('--' + prefix + k, type=int, default=v)
+        elif isinstance(v, float):
+            parser.add_argument('--' + prefix + k, type=float, default=v)
+        elif isinstance(v, bool):
+            parser.add_argument('--' + prefix + k, type=bool, default=v)
+        elif isinstance(v, dict):
+            add_args(parser, v, prefix + k + '_')
+        elif isinstance(v, (list, tuple)):
+            parser.add_argument('--' + prefix + k, type=type(v[0]), nargs='+', default=v)
+        else:
+            print(f'cannot parse key {prefix + k} of type {type(v)}')
+    return parser
+
+
+def find_resume_checkpoint(exp_dir: str, resume: str):
     """ Checkpoints are named after 'stepxxxxxx.pt' """
     if os.path.isfile(resume):
         ckpt_path = resume
@@ -79,11 +102,8 @@ def find_resume_checkpoint(exp_dir, resume):
 
 
 @main_process_only
-def create_exp_dir(cfg_dump,
-                   resume: bool = False,
-                   time_str: str = None,
-                   name: str = None,
-                   no_interaction: bool = False):
+def create_exp_dir(cfg_dict: Dict, resume: bool = False, time_str: str = None,
+                   name: str = None, no_interaction: bool = False):
     if time_str is None:
         time_str = get_time_str()
     if name is None:
@@ -104,11 +124,11 @@ def create_exp_dir(cfg_dump,
     os.makedirs(os.path.join(exp_dir, 'ckpt'), exist_ok=True)
     os.makedirs(os.path.join(exp_dir, 'samples'), exist_ok=True)
     with open(os.path.join(exp_dir, f'config-{time_str}.yaml'), 'w') as f:
-        f.write(cfg_dump)
+        yaml.safe_dump(cfg_dict, f, sort_keys=False)
     return exp_dir
 
 
-def query_yes_no(question, default="yes"):
+def query_yes_no(question: str, default: str = "yes"):
     """Ask a yes/no question via raw_input() and return their answer.
 
     "question" is a string that is presented to the user.

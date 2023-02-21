@@ -11,15 +11,15 @@ from diffusions.schedule import get_beta_schedule
 class DDPM:
     def __init__(self, betas: Tensor = None, objective: str = 'pred_eps', var_type: str = 'fixed_large'):
         assert objective in ['pred_eps', 'pred_x0']
-        assert var_type in ['fixed_small', 'fixed_large']
+        assert var_type in ['fixed_small', 'fixed_large', 'learned_range']
         self.objective = objective
+        self.var_type = var_type
 
         # Define betas, alphas and related terms
-        if betas is None:
-            betas = get_beta_schedule()
-        alphas = 1. - betas
-        self.total_steps = len(betas)
-        self.alphas_cumprod = torch.cumprod(alphas, dim=0)
+        self.betas = get_beta_schedule() if betas is None else betas
+        self.alphas = 1. - self.betas
+        self.total_steps = len(self.betas)
+        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
         self.alphas_cumprod_prev = torch.cat((torch.ones(1, dtype=torch.float64), self.alphas_cumprod[:-1]))
 
         # q(Xt | X0)
@@ -27,20 +27,14 @@ class DDPM:
         self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - self.alphas_cumprod)
 
         # q(X{t-1} | Xt, X0)
-        self.posterior_variance = betas * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
+        self.posterior_variance = self.betas * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
         self.posterior_log_variance = torch.log(torch.cat([self.posterior_variance[[1]], self.posterior_variance[1:]]))
-        self.posterior_mean_coef1 = torch.sqrt(self.alphas_cumprod_prev) * betas / (1. - self.alphas_cumprod)
-        self.posterior_mean_coef2 = torch.sqrt(alphas) * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
+        self.posterior_mean_coef1 = torch.sqrt(self.alphas_cumprod_prev) * self.betas / (1. - self.alphas_cumprod)
+        self.posterior_mean_coef2 = torch.sqrt(self.alphas) * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
 
         # p(X{t-1} | Xt)
         self.sqrt_recip_alphas_cumprod = torch.sqrt(1. / self.alphas_cumprod)
         self.sqrt_recipm1_alphas_cumprod = torch.sqrt(1. / self.alphas_cumprod - 1.)
-        if var_type == 'fixed_small':
-            self.model_variance = self.posterior_variance
-            self.model_log_variance = self.posterior_log_variance
-        else:
-            self.model_variance = betas
-            self.model_log_variance = torch.log(betas)
 
     @staticmethod
     def _extract(a: Tensor, t: Tensor):
@@ -61,9 +55,11 @@ class DDPM:
         if self.objective == 'pred_eps':
             pred_eps = model(Xt, t)
             return F.mse_loss(pred_eps, eps)
-        else:
+        elif self.objective == 'pred_x0':
             pred_x0 = model(Xt, t)
             return F.mse_loss(pred_x0, X0)
+        else:
+            raise ValueError
 
     def q_sample(self, X0: Tensor, t: Tensor, eps: Tensor = None):
         """ Sample from q(Xt | X0)
@@ -99,17 +95,35 @@ class DDPM:
             t (Tensor): [bs], time steps
             clip_denoised (bool): whether to clip predicted X0 to range [-1, 1]
         """
-        if self.objective == 'pred_eps':
-            pred_eps = model(Xt, t)
-            pred_X0 = self._pred_X0_from_eps(Xt, t, pred_eps)
+        model_output = model(Xt, t)
+        # p_variance
+        if self.var_type == 'fixed_small':
+            model_variance = self._extract(self.posterior_variance, t)
+            model_log_variance = self._extract(self.posterior_log_variance, t)
+        elif self.var_type == 'fixed_large':
+            model_variance = self._extract(self.betas, t)
+            model_log_variance = self._extract(torch.log(self.betas), t)
+        elif self.var_type == 'learned_range':
+            min_log = self._extract(self.posterior_log_variance, t)
+            max_log = self._extract(torch.log(self.betas), t)
+            model_output, frac = torch.split(model_output, model_output.shape[1] // 2, dim=1)
+            frac = (frac + 1) / 2  # [-1, 1] --> [0, 1]
+            model_log_variance = frac * max_log + (1 - frac) * min_log
+            model_variance = torch.exp(model_log_variance)
         else:
-            pred_X0 = model(Xt, t)
+            raise ValueError
+        # p_mean
+        if self.objective == 'pred_eps':
+            pred_eps = model_output
+            pred_X0 = self._pred_X0_from_eps(Xt, t, pred_eps)
+        elif self.objective == 'pred_x0':
+            pred_X0 = model_output
+        else:
+            raise ValueError
         if clip_denoised:
             pred_X0.clamp_(-1., 1.)
-        mean_t, var_t, log_var_t = self.q_posterior_mean_variance(pred_X0, Xt, t)
-        var_t = self._extract(self.model_variance, t)
-        log_var_t = self._extract(self.model_log_variance, t)
-        return {'mean': mean_t, 'var': var_t, 'log_var': log_var_t, 'pred_X0': pred_X0}
+        mean_t, _, _ = self.q_posterior_mean_variance(pred_X0, Xt, t)
+        return {'mean': mean_t, 'var': model_variance, 'log_var': model_log_variance, 'pred_X0': pred_X0}
 
     def _pred_X0_from_eps(self, Xt: Tensor, t: Tensor, eps: Tensor):
         return (self._extract(self.sqrt_recip_alphas_cumprod, t) * Xt -

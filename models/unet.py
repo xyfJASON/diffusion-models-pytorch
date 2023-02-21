@@ -45,7 +45,8 @@ class ResBlock(nn.Module):
 
 class UNet(nn.Module):
     def __init__(self,
-                 img_channels: int = 3,
+                 in_channels: int = 3,
+                 out_channels: int = 3,
                  dim: int = 128,
                  dim_mults: List[int] = (1, 2, 2, 2),
                  use_attn: List[int] = (False, True, False, False),
@@ -55,7 +56,6 @@ class UNet(nn.Module):
                  attn_heads: int = 1,
                  dropout: float = 0.1):
         super().__init__()
-        self.img_channels = img_channels
         n_stages = len(dim_mults)
         dims = [dim]
 
@@ -69,7 +69,7 @@ class UNet(nn.Module):
         )
 
         # First convolution
-        self.first_conv = nn.Conv2d(img_channels, dim, 3, stride=1, padding=1)
+        self.first_conv = nn.Conv2d(in_channels, dim, 3, stride=1, padding=1)
         cur_dim = dim
 
         # Down-sample blocks
@@ -117,7 +117,7 @@ class UNet(nn.Module):
         self.last_conv = nn.Sequential(
             nn.GroupNorm(resblock_groups, cur_dim),
             nn.SiLU(),
-            nn.Conv2d(cur_dim, img_channels, 3, stride=1, padding=1),
+            nn.Conv2d(cur_dim, out_channels, 3, stride=1, padding=1),
         )
 
     def forward(self, X: Tensor, T: Tensor):
@@ -163,7 +163,8 @@ def _test():
     print(sum(p.numel() for p in unet.parameters()))
 
     unet = UNet(
-        img_channels=1,
+        in_channels=1,
+        out_channels=1,
         dim=128,
         dim_mults=[1, 1, 2, 2, 4, 4],
         use_attn=[False, False, False, False, True, False],

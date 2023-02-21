@@ -1,0 +1,5 @@
+name: CIFAR-10
+dataroot: /data/CIFAR-10/
+img_size: 32
+img_channels: 3
+num_classes: 10

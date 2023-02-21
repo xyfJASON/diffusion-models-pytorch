@@ -22,8 +22,8 @@ from utils.misc import get_time_str, init_seeds, create_exp_dir, check_freq, get
 
 
 class DDPMTrainer:
-    def __init__(self, cfg, args):
-        self.cfg, self.args = cfg, args
+    def __init__(self, args):
+        self.args = args
         self.time_str = get_time_str()
 
         # INITIALIZE DISTRIBUTED MODE
@@ -31,12 +31,12 @@ class DDPMTrainer:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # INITIALIZE SEEDS
-        init_seeds(self.cfg.SEED + get_rank())
+        init_seeds(self.args.seed + get_rank())
 
         # CREATE EXPERIMENT DIRECTORY
         self.exp_dir = create_exp_dir(
-            cfg_dump=self.cfg.dump(),
-            resume=self.cfg.TRAIN.RESUME is not None,
+            cfg_dict=self.args.__dict__,
+            resume=self.args.resume is not None,
             time_str=self.time_str,
             name=self.args.name,
             no_interaction=self.args.no_interaction,
@@ -51,53 +51,57 @@ class DDPMTrainer:
 
         # BUILD DATASET & DATALOADER & DATA GENERATOR
         train_set = get_dataset(
-            name=self.cfg.DATA.NAME,
-            dataroot=self.cfg.DATA.DATAROOT,
-            img_size=self.cfg.DATA.IMG_SIZE,
+            name=self.args.data_name,
+            dataroot=self.args.data_dataroot,
+            img_size=self.args.data_img_size,
             split='train',
         )
         self.train_loader = get_dataloader(
             dataset=train_set,
             shuffle=True,
             drop_last=True,
-            batch_size=self.cfg.DATALOADER.BATCH_SIZE,
-            num_workers=self.cfg.DATALOADER.NUM_WORKERS,
-            pin_memory=self.cfg.DATALOADER.PIN_MEMORY,
-            prefetch_factor=self.cfg.DATALOADER.PREFETCH_FACTOR,
+            batch_size=self.args.batch_size,
+            num_workers=self.args.num_workers,
+            pin_memory=self.args.pin_memory,
+            prefetch_factor=self.args.prefetch_factor,
         )
-        self.micro_batch = self.cfg.DATALOADER.MICRO_BATCH
+        self.micro_batch = self.args.micro_batch
         if self.micro_batch == 0:
-            self.micro_batch = self.cfg.DATALOADER.BATCH_SIZE
-        effective_batch = self.cfg.DATALOADER.BATCH_SIZE * get_world_size()
+            self.micro_batch = self.args.batch_size
+        effective_batch = self.args.batch_size * get_world_size()
         self.logger.info(f'Size of training set: {len(train_set)}')
-        self.logger.info(f'Batch size per device: {self.cfg.DATALOADER.BATCH_SIZE}')
+        self.logger.info(f'Batch size per device: {self.args.batch_size}')
         self.logger.info(f'Effective batch size: {effective_batch}')
 
         # BUILD DIFFUSER, MODEL AND OPTIMIZERS
         betas = diffusions.schedule.get_beta_schedule(
-            beta_schedule=self.cfg.DDPM.BETA_SCHEDULE,
-            total_steps=self.cfg.DDPM.TOTAL_STEPS,
-            beta_start=self.cfg.DDPM.BETA_START,
-            beta_end=self.cfg.DDPM.BETA_END,
+            beta_schedule=self.args.diffusion_beta_schedule,
+            total_steps=self.args.diffusion_total_steps,
+            beta_start=self.args.diffusion_beta_start,
+            beta_end=self.args.diffusion_beta_end,
         )
         self.DiffusionModel = diffusions.ddpm.DDPM(
             betas=betas,
-            objective=self.cfg.DDPM.OBJECTIVE,
-            var_type=self.cfg.DDPM.VAR_TYPE,
+            objective=self.args.diffusion_objective,
+            var_type=self.args.diffusion_var_type,
         )
-        self.model = build_model(cfg)
+        self.model = build_model(self.args)
         self.model.to(device=self.device)
-        self.ema = models.EMA(self.model, decay=self.cfg.MODEL.EMA_DECAY)
-        self.optimizer = build_optimizer(self.model.parameters(), self.cfg)
+        self.ema = models.EMA(
+            model=self.model,
+            decay=self.args.ema_decay,
+            gradual=self.args.ema_gradual,
+        )
+        self.optimizer = build_optimizer(self.model.parameters(), self.args)
 
         # LOAD PRETRAINED WEIGHTS
-        if self.cfg.MODEL.WEIGHTS is not None:
-            self.load_model(self.cfg.MODEL.WEIGHTS)
+        if self.args.weights is not None:
+            self.load_model(self.args.weights)
 
         # RESUME
         self.cur_step = 0
-        if self.cfg.TRAIN.RESUME is not None:
-            resume_path = find_resume_checkpoint(self.exp_dir, self.cfg.TRAIN.RESUME)
+        if self.args.resume is not None:
+            resume_path = find_resume_checkpoint(self.exp_dir, self.args.resume)
             self.logger.info(f'Resume from {resume_path}')
             self.load_ckpt(resume_path)
 
@@ -116,7 +120,7 @@ class DDPMTrainer:
         self.status_tracker = StatusTracker(
             logger=self.logger,
             exp_dir=self.exp_dir,
-            print_freq=cfg.TRAIN.PRINT_FREQ,
+            print_freq=self.args.print_freq,
         )
 
     def load_model(self, model_path: str, load_ema: bool = False):
@@ -155,24 +159,24 @@ class DDPMTrainer:
             dataloader=self.train_loader,
             start_epoch=self.cur_step,
         )
-        while self.cur_step < self.cfg.TRAIN.TRAIN_STEPS:
+        while self.cur_step < self.args.train_steps:
             # get a batch of data
             batch = next(train_data_generator)
             # run a step
             train_status = self.run_step(batch)
             self.status_tracker.track_status('Train', train_status, self.cur_step)
             # save checkpoint
-            if check_freq(self.cfg.TRAIN.SAVE_FREQ, self.cur_step):
+            if check_freq(self.args.save_freq, self.cur_step):
                 self.save_ckpt(os.path.join(self.exp_dir, 'ckpt', f'step{self.cur_step:0>6d}.pt'))
             # sample from current model
-            if check_freq(self.cfg.TRAIN.SAMPLE_FREQ, self.cur_step):
+            if check_freq(self.args.sample_freq, self.cur_step):
                 self.sample(os.path.join(self.exp_dir, 'samples', f'step{self.cur_step:0>6d}.png'))
             # synchronizes all processes
             if is_dist_avail_and_initialized():
                 dist.barrier()
             self.cur_step += 1
         # save the last checkpoint if not saved
-        if not check_freq(self.cfg.TRAIN.SAVE_FREQ, self.cur_step - 1):
+        if not check_freq(self.args.save_freq, self.cur_step - 1):
             self.save_ckpt(os.path.join(self.exp_dir, 'ckpt', f'step{self.cur_step-1:0>6d}.pt'))
         self.status_tracker.close()
         self.logger.info('End of training')
@@ -185,7 +189,7 @@ class DDPMTrainer:
         batch_size = batch.shape[0]
         for i in range(0, batch_size, self.micro_batch):
             X = batch[i:i+self.micro_batch].to(device=self.device, dtype=torch.float32)
-            t = torch.randint(self.cfg.DDPM.TOTAL_STEPS, (X.shape[0], ), device=self.device).long()
+            t = torch.randint(self.args.diffusion_total_steps, (X.shape[0], ), device=self.device).long()
             # no need to synchronize gradient before the last micro batch
             no_sync = is_dist_avail_and_initialized() and (i + self.micro_batch) < batch_size
             cm = self.model.no_sync() if no_sync else nullcontext()
@@ -208,7 +212,7 @@ class DDPMTrainer:
         model = get_bare_model(self.model).eval()
         samples = []
         total_folds = math.ceil(num_each_device / self.micro_batch)
-        img_shape = (self.cfg.DATA.IMG_CHANNELS, self.cfg.DATA.IMG_SIZE, self.cfg.DATA.IMG_SIZE)
+        img_shape = (self.args.data_img_channels, self.args.data_img_size, self.args.data_img_size)
         for i in range(total_folds):
             n = min(self.micro_batch, num_each_device - i * self.micro_batch)
             init_noise = torch.randn((n, *img_shape), device=self.device)

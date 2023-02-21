@@ -11,6 +11,7 @@ def check_split(name, split, strict_valid_test):
         'cifar-10': ['train', 'test'],
         'celebahq': ['train', 'valid', 'test', 'all'],
         'celeba-hq': ['train', 'valid', 'test', 'all'],
+        'imagenet': ['train', 'valid', 'test'],
     }
     assert split in ['train', 'valid', 'test', 'all']
     if split in ['train', 'all'] or strict_valid_test:
@@ -55,6 +56,12 @@ def get_dataset(name, dataroot, img_size, split, transforms=None, subset_ids=Non
         if transforms is None:
             transforms = get_default_transforms(img_size)
         dataset = CelebA_HQ(root=dataroot, split=split, transform=transforms)
+
+    elif name.lower() == 'imagenet':
+        from datasets.imagenet import ImageNet, get_default_transforms
+        if transforms is None:
+            transforms = get_default_transforms(img_size, split)
+        dataset = ImageNet(root=dataroot, split=split, transform=transforms)
 
     else:
         raise ValueError(f"Dataset {name} is not supported.")

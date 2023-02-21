@@ -2,10 +2,11 @@ import torch.nn as nn
 
 
 class EMA:
-    def __init__(self, model: nn.Module, decay: float = 0.9999):
+    def __init__(self, model: nn.Module, decay: float = 0.9999, gradual: bool = True):
         super().__init__()
         self.model = model
         self.decay = decay
+        self.gradual = gradual
         self.num_updates = 0
 
         self.shadow, self.backup = {}, {}
@@ -18,7 +19,9 @@ class EMA:
 
     def update(self):
         self.num_updates += 1
-        decay = min(self.decay, (1 + self.num_updates) / (10 + self.num_updates))
+        decay = self.decay
+        if self.gradual:
+            decay = min(self.decay, (1 + self.num_updates) / (10 + self.num_updates))
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 assert name in self.shadow
@@ -63,6 +66,7 @@ def _test():
     print(model.state_dict())
     print(ema.state_dict()['shadow'])
     print(model.state_dict())
+    print()
 
     # update the model to 1
     for p in model[0].parameters():
@@ -71,14 +75,16 @@ def _test():
     print(model.state_dict())
     print(ema.state_dict()['shadow'])
     print(model.state_dict())
+    print()
 
     # update the model to 2
     for p in model[0].parameters():
-        p.data.fill_(1)
+        p.data.fill_(2)
     ema.update()
     print(model.state_dict())
     print(ema.state_dict()['shadow'])
     print(model.state_dict())
+    print()
 
     # test saving and loading state_dict
     model.load_state_dict(ema.state_dict()['shadow'])
