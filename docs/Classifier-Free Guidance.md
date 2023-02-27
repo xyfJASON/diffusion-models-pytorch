@@ -24,6 +24,7 @@ python train_classifier_free.py --config_data CONFIG_DATA \
                                 [--print_freq PRINT_FREQ] \
                                 [--sample_freq SAMPLE_FREQ] \
                                 [--save_freq SAVE_FREQ] \
+                                [--n_samples_each_class N_SAMPLES_EACH_CLASS] \
                                 [--ema_decay EMA_DECAY] \
                                 [--ema_gradual EMA_GRADUAL] \
                                 [--p_uncond P_UNCOND] \
@@ -45,8 +46,8 @@ For example, to train on CIFAR-10 with default settings:
 
 ```shell
 python train_classifier_free.py --config_data ./configs/data/cifar10.yaml \
-                                --config_model ./configs/model/unet_cond.yaml \
-                                --config_diffusion ./configs/diffusion/classifier_free_1000_cosine_fixedlarge.yaml
+                                --config_model ./configs/model/unet_conditional.yaml \
+                                --config_diffusion ./configs/diffusion/1000_cosine_predeps_fixedlarge.yaml
 ```
 
 

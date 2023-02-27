@@ -1,0 +1,4 @@
+name: FFHQ
+dataroot: /data/FFHQ/
+img_size: 256
+img_channels: 3

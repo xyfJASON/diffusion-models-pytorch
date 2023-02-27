@@ -49,7 +49,7 @@ class DDPMTrainer:
         self.logger.info(f'Device: {self.device}')
         self.logger.info(f"Number of devices: {get_world_size()}")
 
-        # BUILD DATASET & DATALOADER & DATA GENERATOR
+        # BUILD DATASET & DATALOADER
         train_set = get_dataset(
             name=self.args.data_name,
             dataroot=self.args.data_dataroot,
@@ -208,7 +208,7 @@ class DDPMTrainer:
 
     @torch.no_grad()
     def sample(self, savepath: str):
-        num_each_device = 64 // get_world_size()
+        num_each_device = self.args.n_samples // get_world_size()
         model = get_bare_model(self.model).eval()
         samples = []
         total_folds = math.ceil(num_each_device / self.micro_batch)
@@ -223,8 +223,9 @@ class DDPMTrainer:
             samples.append(X)
         samples = torch.cat(samples, dim=0)
         if is_dist_avail_and_initialized():
-            sample_list = [torch.Tensor() for _ in range(get_world_size())]
-            dist.all_gather_object(sample_list, samples)
-            samples = torch.cat(sample_list, dim=0)
+            tensor_list = [torch.empty_like(samples) for _ in range(get_world_size())]
+            dist.all_gather(tensor_list, samples)
+            samples = torch.cat(tensor_list, dim=0)
         if is_main_process():
-            save_image(samples, savepath, nrow=8, normalize=True, value_range=(-1, 1))
+            nrow = math.ceil(math.sqrt(self.args.n_samples))
+            save_image(samples, savepath, nrow=nrow, normalize=True, value_range=(-1, 1))

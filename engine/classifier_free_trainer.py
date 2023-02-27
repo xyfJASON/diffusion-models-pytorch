@@ -48,7 +48,7 @@ class ClassifierFreeTrainer:
         self.logger.info(f'Device: {self.device}')
         self.logger.info(f"Number of devices: {get_world_size()}")
 
-        # BUILD DATASET & DATALOADER & DATA GENERATOR
+        # BUILD DATASET & DATALOADER
         train_set = get_dataset(
             name=self.args.data_name,
             dataroot=self.args.data_dataroot,
@@ -218,12 +218,12 @@ class ClassifierFreeTrainer:
 
     @torch.no_grad()
     def sample(self, savepath: str):
-        num_each_device = 16 // get_world_size()
+        num_each_device = self.args.n_samples_each_class // get_world_size()
         model = get_bare_model(self.model).eval()
         samples = []
         total_folds = math.ceil(num_each_device / self.micro_batch)
         img_shape = (self.args.data_img_channels, self.args.data_img_size, self.args.data_img_size)
-        for c in range(self.args.data_num_classes):
+        for c in range(min(10, self.args.data_num_classes)):
             samples_c = []
             for i in range(total_folds):
                 n = min(self.micro_batch, num_each_device - i * self.micro_batch)
@@ -238,10 +238,10 @@ class ClassifierFreeTrainer:
                 samples_c.append(X)
             samples_c = torch.cat(samples_c, dim=0)
             if is_dist_avail_and_initialized():
-                sample_list = [torch.Tensor() for _ in range(get_world_size())]
-                dist.all_gather_object(sample_list, samples_c)
-                samples_c = torch.cat(sample_list, dim=0)
+                tensor_list = [torch.empty_like(samples_c) for _ in range(get_world_size())]
+                dist.all_gather(tensor_list, samples_c)
+                samples_c = torch.cat(tensor_list, dim=0)
             samples.append(samples_c.cpu())
         samples = torch.cat(samples, dim=0)
         if is_main_process():
-            save_image(samples, savepath, nrow=16, normalize=True, value_range=(-1, 1))
+            save_image(samples, savepath, nrow=self.args.n_samples_each_class, normalize=True, value_range=(-1, 1))

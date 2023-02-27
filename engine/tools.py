@@ -17,7 +17,7 @@ def build_model(args: Namespace):
             attn_heads=args.model_attn_heads,
             dropout=args.model_dropout,
         )
-    elif args.model_type.lower() == 'unet_cond':
+    elif args.model_type.lower() == 'unet_conditional':
         model = models.UNetConditional(
             in_channels=args.model_in_channels,
             out_channels=args.model_out_channels,

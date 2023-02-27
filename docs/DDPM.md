@@ -24,6 +24,7 @@ python train_ddpm.py --config_data CONFIG_DATA \
                      [--print_freq PRINT_FREQ] \
                      [--sample_freq SAMPLE_FREQ] \
                      [--save_freq SAVE_FREQ] \
+                     [--n_samples N_SAMPLES] \
                      [--ema_decay EMA_DECAY] \
                      [--ema_gradual EMA_GRADUAL] \
                      [--optim_type OPTIM_TYPE] \
@@ -46,7 +47,7 @@ For example, to train on CIFAR-10 with default settings:
 ```shell
 python train_ddpm.py --config_data ./configs/data/cifar10.yaml \
                      --config_model ./configs/model/unet.yaml \
-                     --config_diffusion ./configs/diffusion/ddpm_1000_linear_fixedlarge.yaml
+                     --config_diffusion ./configs/diffusion/1000_linear_predeps_fixedlarge.yaml
 ```
 
 

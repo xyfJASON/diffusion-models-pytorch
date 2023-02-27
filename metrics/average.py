@@ -3,6 +3,9 @@ from torchmetrics import Metric
 
 
 class AverageMeter(Metric):
+
+    full_state_update = False
+
     def __init__(self):
         super().__init__()
         self.add_state('sum', default=torch.tensor(0.0), dist_reduce_fx='sum')

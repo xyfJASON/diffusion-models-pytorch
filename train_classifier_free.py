@@ -49,7 +49,7 @@ def parse_args():
     )
     parser.add_argument(
         '--batch_size', type=int, default=128,
-        help='Batch size',
+        help='Batch size on each device',
     )
     parser.add_argument(
         '--micro_batch', type=int, default=0,
@@ -69,7 +69,7 @@ def parse_args():
         help='Number of steps to train',
     )
     parser.add_argument(
-        '--print_freq', type=int, default=200,
+        '--print_freq', type=int, default=100,
         help='Frequency of printing status, in steps',
     )
     parser.add_argument(
@@ -79,6 +79,10 @@ def parse_args():
     parser.add_argument(
         '--save_freq', type=int, default=10000,
         help='Frequency of saving checkpoints, in steps',
+    )
+    parser.add_argument(
+        '--n_samples_each_class', type=int, default=16,
+        help='Number of images to sample for visualization',
     )
     parser.add_argument(
         '--ema_decay', type=float, default=0.9999,
