@@ -6,17 +6,11 @@ CIFAR10 = dset.CIFAR10
 
 
 def get_default_transforms(img_size: int, split: str):
-    if split == 'train':
-        transforms = T.Compose([
-            T.Resize((img_size, img_size)),
-            T.RandomHorizontalFlip(),
-            T.ToTensor(),
-            T.Normalize([0.5] * 3, [0.5] * 3),
-        ])
-    else:
-        transforms = T.Compose([
-            T.Resize((img_size, img_size)),
-            T.ToTensor(),
-            T.Normalize([0.5] * 3, [0.5] * 3),
-        ])
+    flip_p = 0.5 if split == 'train' else 0.0
+    transforms = T.Compose([
+        T.Resize((img_size, img_size)),
+        T.RandomHorizontalFlip(flip_p),
+        T.ToTensor(),
+        T.Normalize([0.5] * 3, [0.5] * 3),
+    ])
     return transforms

@@ -1,19 +1,20 @@
-import torch
-from torchmetrics import Metric
+class AverageMeter:
+    """
+    Computes and stores the average and current value
 
-
-class AverageMeter(Metric):
-
-    full_state_update = False
-
+    Adapted from https://github.com/huggingface/pytorch-image-models/blob/main/timm/utils/metrics.py
+    """
     def __init__(self):
-        super().__init__()
-        self.add_state('sum', default=torch.tensor(0.0), dist_reduce_fx='sum')
-        self.add_state('total', default=torch.tensor(0), dist_reduce_fx='sum')
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
 
-    def update(self, val: torch.Tensor, n: int):
+    def reset(self):
+        self.__init__()
+
+    def update(self, val, n=1):
+        self.val = val
         self.sum += val * n
-        self.total += n
-
-    def compute(self):
-        return self.sum / self.total
+        self.count += n
+        self.avg = self.sum / self.count

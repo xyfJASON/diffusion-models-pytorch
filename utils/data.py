@@ -1,7 +1,6 @@
-from torch.utils.data import DataLoader, Subset
-from torch.utils.data.distributed import DistributedSampler
+import tqdm
+from torch.utils.data import Subset
 from utils.logger import get_logger
-from utils.dist import is_dist_avail_and_initialized
 
 
 def check_split(name, split, strict_valid_test):
@@ -55,13 +54,13 @@ def get_dataset(name, dataroot, img_size, split, transforms=None, subset_ids=Non
     elif name.lower() in ['celeba-hq', 'celebahq']:
         from datasets.celeba_hq import CelebA_HQ, get_default_transforms
         if transforms is None:
-            transforms = get_default_transforms(img_size)
+            transforms = get_default_transforms(img_size, split)
         dataset = CelebA_HQ(root=dataroot, split=split, transform=transforms)
 
     elif name.lower() == 'ffhq':
         from datasets.ffhq import FFHQ, get_default_transforms
         if transforms is None:
-            transforms = get_default_transforms(img_size)
+            transforms = get_default_transforms(img_size, split)
         dataset = FFHQ(root=dataroot, split=split, transform=transforms)
 
     elif name.lower() == 'imagenet':
@@ -78,38 +77,8 @@ def get_dataset(name, dataroot, img_size, split, transforms=None, subset_ids=Non
     return dataset
 
 
-def get_dataloader(dataset,
-                   batch_size,
-                   shuffle=False,
-                   num_workers=0,
-                   collate_fn=None,
-                   pin_memory=False,
-                   drop_last=False,
-                   prefetch_factor=2):
-    if is_dist_avail_and_initialized():
-        sampler = DistributedSampler(dataset, shuffle=shuffle)
-        shuffle = None
-    else:
-        sampler = None
-    dataloader = DataLoader(
-        dataset=dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        sampler=sampler,
-        num_workers=num_workers,
-        collate_fn=collate_fn,
-        pin_memory=pin_memory,
-        drop_last=drop_last,
-        prefetch_factor=prefetch_factor,
-    )
-    return dataloader
-
-
-def get_data_generator(dataloader, start_epoch=0):
-    ep = start_epoch
+def get_data_generator(dataloader, is_main_process=True, with_tqdm=True):
+    disable = not (with_tqdm and is_main_process)
     while True:
-        if hasattr(dataloader.sampler, 'set_epoch'):
-            dataloader.sampler.set_epoch(ep)
-        for batch in dataloader:
+        for batch in tqdm.tqdm(dataloader, disable=disable, desc='Epoch', leave=False):
             yield batch
-        ep += 1

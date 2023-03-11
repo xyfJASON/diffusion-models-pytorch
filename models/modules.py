@@ -57,15 +57,21 @@ class SinusoidalPosEmb(nn.Module):
         return embed
 
 
-def Upsample(in_channels: int, out_channels: int):
-    return nn.Sequential(
-        nn.Upsample(scale_factor=2, mode='nearest'),
-        nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1),
-    )
+def Upsample(in_channels: int, out_channels: int, use_conv: bool = True):
+    if use_conv:
+        return nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1),
+        )
+    else:
+        return nn.Upsample(scale_factor=2, mode='nearest')
 
 
-def Downsample(in_channels: int, out_channels: int):
-    return nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1)
+def Downsample(in_channels: int, out_channels: int, use_conv: bool = True):
+    if use_conv:
+        return nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1)
+    else:
+        return nn.AvgPool2d(kernel_size=2, stride=2)
 
 
 class SelfAttentionBlock(nn.Module):
@@ -80,7 +86,7 @@ class SelfAttentionBlock(nn.Module):
         self.proj = nn.Conv2d(dim, dim, kernel_size=1)
         self.scale = (dim // n_heads) ** -0.5
 
-    def forward(self, X: Tensor):
+    def forward(self, X: Tensor, return_attn_map: bool = False):
         bs, C, H, W = X.shape
         normX = self.norm(X)
         q = self.q(normX).view(bs * self.n_heads, -1, H*W)
@@ -90,7 +96,10 @@ class SelfAttentionBlock(nn.Module):
         attn = torch.bmm(q.permute(0, 2, 1), k).softmax(dim=-1)
         output = torch.bmm(v, attn.permute(0, 2, 1)).view(bs, -1, H, W)
         output = self.proj(output)
-        return output + X
+        if not return_attn_map:
+            return output + X
+        else:
+            return output + X, attn.view(bs, self.n_heads, H*W, H*W)
 
 
 class AdaGN(nn.Module):

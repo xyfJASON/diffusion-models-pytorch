@@ -22,6 +22,9 @@ class ImageNet(Dataset):
     def __init__(self, root, split='train', transform=None):
         assert split in ['train', 'val', 'valid', 'test']
         img_root = os.path.join(root, split)
+        if split in ['val', 'valid']:
+            if not os.path.isdir(img_root):
+                img_root = os.path.join(root, 'valid' if split == 'val' else 'val')
         assert os.path.isdir(img_root), f'{img_root} is not an existing directory'
 
         self.transform = transform
@@ -39,9 +42,11 @@ class ImageNet(Dataset):
 
 def get_default_transforms(img_size: int, split: str):
     crop = T.RandomCrop if split == 'train' else T.CenterCrop
+    flip_p = 0.5 if split == 'train' else 0.0
     transforms = T.Compose([
         T.Resize(img_size),
         crop((img_size, img_size)),
+        T.RandomHorizontalFlip(flip_p),
         T.ToTensor(),
         T.Normalize([0.5] * 3, [0.5] * 3),
     ])

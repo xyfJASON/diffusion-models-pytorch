@@ -8,10 +8,10 @@ from models.modules import SinusoidalPosEmb, SelfAttentionBlock, Downsample, Ups
 
 
 class ResBlock(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, embed_dim: int, groups: int = 32, dropout: float = 0.1):
+    def __init__(self, in_channels: int, out_channels: int, embed_dim: int, dropout: float = 0.1):
         super().__init__()
         self.blk1 = nn.Sequential(
-            nn.GroupNorm(groups, in_channels),
+            nn.GroupNorm(32, in_channels),
             nn.SiLU(),
             nn.Conv2d(in_channels, out_channels, 3, stride=1, padding=1),
         )
@@ -20,7 +20,7 @@ class ResBlock(nn.Module):
             nn.Linear(embed_dim, out_channels),
         )
         self.blk2 = nn.Sequential(
-            nn.GroupNorm(groups, out_channels),
+            nn.GroupNorm(32, out_channels),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv2d(out_channels, out_channels, 3, stride=1, padding=1),
@@ -44,17 +44,17 @@ class ResBlock(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self,
-                 in_channels: int = 3,
-                 out_channels: int = 3,
-                 dim: int = 128,
-                 dim_mults: List[int] = (1, 2, 2, 2),
-                 use_attn: List[int] = (False, True, False, False),
-                 num_res_blocks: int = 2,
-                 resblock_groups: int = 32,
-                 attn_groups: int = 32,
-                 attn_heads: int = 1,
-                 dropout: float = 0.1):
+    def __init__(
+            self,
+            in_channels: int = 3,
+            out_channels: int = 3,
+            dim: int = 128,
+            dim_mults: List[int] = (1, 2, 2, 2),
+            use_attn: List[int] = (False, True, False, False),
+            num_res_blocks: int = 2,
+            n_heads: int = 1,
+            dropout: float = 0.1,
+    ):
         super().__init__()
         n_stages = len(dim_mults)
         dims = [dim]
@@ -79,10 +79,9 @@ class UNet(nn.Module):
             out_dim = dim * dim_mults[i]
             stage_blocks = nn.ModuleList([])
             for j in range(num_res_blocks):
-                stage_blocks.append(ResBlock(cur_dim, out_dim, embed_dim=time_embed_dim,
-                                             groups=resblock_groups, dropout=dropout))
+                stage_blocks.append(ResBlock(cur_dim, out_dim, embed_dim=time_embed_dim, dropout=dropout))
                 if use_attn[i]:
-                    stage_blocks.append(SelfAttentionBlock(out_dim, n_heads=attn_heads, groups=attn_groups))
+                    stage_blocks.append(SelfAttentionBlock(out_dim, n_heads=n_heads))
                 dims.append(out_dim)
                 cur_dim = out_dim
             if i < n_stages - 1:
@@ -104,10 +103,9 @@ class UNet(nn.Module):
             out_dim = dim * dim_mults[i]
             stage_blocks = nn.ModuleList([])
             for j in range(num_res_blocks + 1):
-                stage_blocks.append(ResBlock(dims.pop() + cur_dim, out_dim, embed_dim=time_embed_dim,
-                                             groups=resblock_groups, dropout=dropout))
+                stage_blocks.append(ResBlock(dims.pop() + cur_dim, out_dim, embed_dim=time_embed_dim, dropout=dropout))
                 if use_attn[i]:
-                    stage_blocks.append(SelfAttentionBlock(out_dim, n_heads=attn_heads, groups=attn_groups))
+                    stage_blocks.append(SelfAttentionBlock(out_dim, n_heads=n_heads))
                 cur_dim = out_dim
             if i > 0:
                 stage_blocks.append(Upsample(out_dim, out_dim))
@@ -115,7 +113,7 @@ class UNet(nn.Module):
 
         # Last convolution
         self.last_conv = nn.Sequential(
-            nn.GroupNorm(resblock_groups, cur_dim),
+            nn.GroupNorm(32, cur_dim),
             nn.SiLU(),
             nn.Conv2d(cur_dim, out_channels, 3, stride=1, padding=1),
         )

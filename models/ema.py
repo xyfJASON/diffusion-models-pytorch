@@ -56,6 +56,10 @@ class EMA:
         for k in self.shadow.keys():
             self.shadow[k] = self.shadow[k].to(device)
 
+    def to(self, device):
+        for k in self.shadow.keys():
+            self.shadow[k] = self.shadow[k].to(device)
+
 
 def _test():
     # initialize to 0

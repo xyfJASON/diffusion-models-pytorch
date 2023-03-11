@@ -55,9 +55,11 @@ class CelebA_HQ(Dataset):
         return X
 
 
-def get_default_transforms(img_size: int):
+def get_default_transforms(img_size: int, split: str):
+    flip_p = 0.5 if split == 'train' else 0.0
     transforms = T.Compose([
         T.Resize((img_size, img_size)),
+        T.RandomHorizontalFlip(flip_p),
         T.ToTensor(),
         T.Normalize([0.5] * 3, [0.5] * 3),
     ])
