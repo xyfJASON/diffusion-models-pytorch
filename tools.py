@@ -7,7 +7,8 @@ import models
 
 def build_model(cfg: CN, with_ema: bool = True):
     if cfg.model.type.lower() == 'unet':
-        model = models.UNet(
+        from models.unet import UNet
+        model = UNet(
             in_channels=cfg.model.in_channels,
             out_channels=cfg.model.out_channels,
             dim=cfg.model.dim,
@@ -18,7 +19,8 @@ def build_model(cfg: CN, with_ema: bool = True):
             dropout=cfg.model.dropout,
         )
     elif cfg.model.type.lower() == 'unet_conditional':
-        model = models.UNetConditional(
+        from models.unet_conditional import UNetConditional
+        model = UNetConditional(
             in_channels=cfg.model.in_channels,
             out_channels=cfg.model.out_channels,
             dim=cfg.model.dim,
@@ -54,6 +56,19 @@ def build_model(cfg: CN, with_ema: bool = True):
             use_scale_shift_norm=cfg.model.use_scale_shift_norm,
             resblock_updown=cfg.model.resblock_updown,
             use_new_attention_order=cfg.model.use_new_attention_order,
+        )
+    elif cfg.model.type.lower() == 'pesser/pytorch_diffusion/model':
+        from models.pesser.pytorch_diffusion.model import Model
+        model = Model(
+            resolution=cfg.model.resolution,
+            in_channels=cfg.model.in_channels,
+            out_ch=cfg.model.out_ch,
+            ch=cfg.model.ch,
+            ch_mult=tuple(cfg.model.ch_mult),
+            num_res_blocks=cfg.model.num_res_blocks,
+            attn_resolutions=cfg.model.attn_resolutions,
+            dropout=cfg.model.dropout,
+            resamp_with_conv=cfg.model.resamp_with_conv,
         )
     else:
         raise ValueError

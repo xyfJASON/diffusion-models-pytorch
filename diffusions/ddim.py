@@ -8,12 +8,13 @@ from diffusions import DDPM
 
 
 class DDIM(DDPM):
-    def __init__(self,
-                 betas: Tensor = None,
-                 objective: str = 'pred_eps',
-                 var_type: str = 'fixed_large',
-                 eta: float = 0.):
-        super().__init__(betas, objective, var_type)
+    def __init__(
+            self,
+            betas: Tensor = None,
+            objective: str = 'pred_eps',
+            eta: float = 0.,
+    ):
+        super().__init__(betas, objective)
         self.eta = eta
         self.alphas_cumprod_next = torch.cat((self.alphas_cumprod[1:], torch.zeros(1, dtype=torch.float64)))
 
