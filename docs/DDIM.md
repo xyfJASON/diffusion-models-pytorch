@@ -13,32 +13,27 @@ DDIM shares the same training process with DDPM. Please refer to [DDPM doc](./DD
 ## Sampling
 
 ```shell
-python sample_ddim.py --config_data CONFIG_DATA \
-                      --config_model CONFIG_MODEL \
-                      --config_diffusion CONFIG_DIFFUSION \
-                      [--seed SEED] \
-                      --weights WEIGHTS \
-                      [--load_ema LOAD_EMA] \
-                      [--ddim_eta DDIM_ETA] \
-                      [--skip_type {uniform,quad}] \
-                      [--skip_steps SKIP_STEPS] \
-                      --n_samples N_SAMPLES \
-                      --save_dir SAVE_DIR \
-                      [--batch_size BATCH_SIZE] \
-                      [--mode {sample,interpolate,reconstruction}] \
-                      [--n_interpolate N_INTERPOLATE] \
-                      [--data_*** ***] \
-                      [--model_*** ***] \
-                      [--diffusion_*** ***]
+accelerate-launch sample_ddim.py -c CONFIG \
+                                 [--seed SEED] \
+                                 --weights WEIGHTS \
+                                 [--load_ema LOAD_EMA] \
+                                 [--ddim_eta DDIM_ETA] \
+                                 [--skip_type {uniform,quad}] \
+                                 [--skip_steps SKIP_STEPS] \
+                                 --n_samples N_SAMPLES \
+                                 --save_dir SAVE_DIR \
+                                 [--micro_batch MICRO_BATCH] \
+                                 [--mode {sample,interpolate,reconstruction}] \
+                                 [--n_interpolate N_INTERPOLATE]
 ```
 
-- To sample on multiple GPUs, replace `python` with `torchrun --nproc_per_node NUM_GPUS`.
+- This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
 - Use `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps.
 - Choose a sampling mode by `--mode MODE`, the options are:
   - `sample` (default): randomly sample images
   - `interpolate`: sample two random images and interpolate between them. Use `--n_interpolate` to specify the number of images in between.
-  - `reconstruction`:  encode a real image from dataset with **DDIM inversion**, and then decode it with DDIM sampling.
-- Specify `--batch_size BATCH_SIZE` to sample images batch by batch. Set it as large as possible to fully utilize your devices. The default value of 1 is pretty slow.
+  - `reconstruction`:  encode a real image from dataset with **DDIM inversion** (DDIM encoding), and then decode it with DDIM sampling.
+- Specify `--micro_batch MICRO_BATCH` to sample images batch by batch. Set it as large as possible to fully utilize your devices.
 
 
 
@@ -52,6 +47,8 @@ Same as DDPM. Please refer to [DDPM doc](./DDPM.md).
 
 **FID and IS on CIFAR-10 32x32**:
 
+All the metrics are evaluated on 50K samples using [torch-fidelity](https://torch-fidelity.readthedocs.io/en/latest/index.html) library.
+
 <table align="center" width=100%>
   <tr>
     <th align="center">eta</th>
@@ -62,44 +59,23 @@ Same as DDPM. Please refer to [DDPM doc](./DDPM.md).
   <tr>
     <td align="center" rowspan="4">0.0</td>
     <td align="center">1000</td>
-    <td align="center">4.2221</td>
-    <td align="center">9.0388 (0.0994)</td>
+    <td align="center">4.1892</td>
+    <td align="center">9.0626 ± 0.1093</td>
   </tr>
   <tr>
     <td align="center">100 (10x faster)</td>
-    <td align="center">6.0774</td>
-    <td align="center">8.7873 (0.1186)</td>
+    <td align="center">6.0508</td>
+    <td align="center">8.8424 ± 0.0862</td>
   </tr>
   <tr>
     <td align="center">50 (20x faster)</td>
-    <td align="center">7.7867</td>
-    <td align="center">8.6770 (0.1304)</td>
+    <td align="center">7.7011</td>
+    <td align="center">8.7076 ± 0.1021</td>
   </tr>
   <tr>
     <td align="center">10 (100x faster)</td>
-    <td align="center">18.9220</td>
-    <td align="center">8.0326 (0.0961)</td>
-  </tr>
-  <tr>
-    <td align="center" rowspan="4">1.0</td>
-    <td align="center">1000</td>
-    <td align="center">5.2496</td>
-    <td align="center">8.8996 (0.1010)</td>
-  </tr>
-  <tr>
-    <td align="center">100 (10x faster)</td>
-    <td align="center">11.1593</td>
-    <td align="center">8.5983 (0.1114)</td>
-  </tr>
-  <tr>
-    <td align="center">50 (20x faster)</td>
-    <td align="center">15.2403</td>
-    <td align="center">8.3222 (0.1139)</td>
-  </tr>
-  <tr>
-    <td align="center">10 (100x faster)</td>
-    <td align="center">40.6563</td>
-    <td align="center">7.1315 (0.0682)</td>
+    <td align="center">18.9559</td>
+    <td align="center">8.0852 ± 0.1137</td>
   </tr>
  </table>
 
@@ -111,11 +87,11 @@ Same as DDPM. Please refer to [DDPM doc](./DDPM.md).
   <img src="../assets/ddim-cifar10.png" width=50% />
 </p>
 
-From top to bottom: 10 steps, 50 steps, 100 steps and 1000 steps. It can be seen that fewer steps leads to blurrier results.
+From top to bottom: 10 steps, 50 steps, 100 steps and 1000 steps. It can be seen that fewer steps leads to blurrier results, but human eyes can hardly distinguish the difference between 50/100 steps and 1000 steps.
 
 
 
-**Spherical linear interpolation (slerp) between two samples (100 steps)**:
+**Spherical linear interpolation (slerp) between two samples (sample with 100 steps)**:
 
 <p align="center">
   <img src="../assets/ddim-cifar10-interpolate.png" width=60% />
@@ -126,8 +102,7 @@ From top to bottom: 10 steps, 50 steps, 100 steps and 1000 steps. It can be seen
 </p>
 
 
-
-**Reconstruction (100 steps)**:
+**Reconstruction (sample with 100 steps)**:
 
 <p align="center">
   <img src="../assets/ddim-cifar10-reconstruction.png" width=60% />
@@ -138,9 +113,8 @@ In each pair, image on the left is the real image sampled from dataset, the othe
 
 
 
-**Reconstruction (1000 steps)**:
+**Reconstruction (sample with 1000 steps)**:
 
 <p align="center">
   <img src="../assets/ddim-celebahq-reconstruction.png" width=60% />
 </p>
-

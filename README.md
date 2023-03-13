@@ -64,5 +64,4 @@ I use the same model in all tests, which is trained following the standard DDPM.
 Interesting facts observed:
 
 - DDPM (fixed-large) performs better than DDPM (fixed-small) with 1000 steps, but degrades drastically as the number of steps decreases. If you check on the samples from DDPM (fixed-large) (<= 100 steps), you'll find that they still contain noticeable noises.
-- DDPM (fixed-small) and DDIM (eta=1) are theoretically the same, and indeed, their curves are very close, especially in the FID case.
 

@@ -7,47 +7,17 @@
 ## Training
 
 ```shell
-python train_ddpm.py --config_data CONFIG_DATA \
-                     --config_model CONFIG_MODEL \
-                     --config_diffusion CONFIG_DIFFUSION \
-                     [--name NAME] \
-                     [--no_interaction] \
-                     [--seed SEED] \
-                     [--num_workers NUM_WORKERS] \
-                     [--pin_memory PIN_MEMORY] \
-                     [--prefetch_factor PREFETCH_FACTOR] \
-                     [--batch_size BATCH_SIZE] \
-                     [--micro_batch MICRO_BATCH] \
-                     [--weights WEIGHTS] \
-                     [--resume RESUME] \
-                     [--train_steps TRAIN_STEPS] \
-                     [--print_freq PRINT_FREQ] \
-                     [--sample_freq SAMPLE_FREQ] \
-                     [--save_freq SAVE_FREQ] \
-                     [--n_samples N_SAMPLES] \
-                     [--ema_decay EMA_DECAY] \
-                     [--ema_gradual EMA_GRADUAL] \
-                     [--optim_type OPTIM_TYPE] \
-                     [--lr LR] \
-                     [--data_*** ***] \
-                     [--model_*** ***] \
-                     [--diffusion_*** ***]
+accelerate-launch train_ddpm.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
 ```
 
-- To train on multiple GPUs, replace `python` with `torchrun --nproc_per_node NUM_GPUS`.
-
-- Pass your data configuration file to `--config_data`. Some examples are under `./configs/data/`. Besides creating a new file, you may also override keys by `--data_{key} {value}`.
-
-  This also applies to the model and diffusion configurations.
-
-- An experiment directory will be created under `./runs/` for each run, which is named after `NAME`, or the current time if `NAME` is not specified. The directory contains logs, checkpoints, tensorboard, etc.
+- This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
+- Results (logs, checkpoints, tensorboard, etc.) of each run will be saved to `EXP_DIR`. If `EXP_DIR` is not specified, they will be saved to `runs/exp-{current time}/`.
+- To modify some configuration items without creating a new configuration file, you can pass `--key value` pairs to the script. For example, the default variance schedule in `./configs/ddpm_cifar10.yaml` is linear, and if you want to change it to cosine, you can simply pass `--diffusion.beta_schedule cosine`.
 
 For example, to train on CIFAR-10 with default settings:
 
 ```shell
-python train_ddpm.py --config_data ./configs/data/cifar10.yaml \
-                     --config_model ./configs/model/unet.yaml \
-                     --config_diffusion ./configs/diffusion/1000_linear_predeps_fixedlarge.yaml
+accelerate-launch train_ddpm.py -c ./configs/ddpm_cifar10.yaml
 ```
 
 
@@ -55,49 +25,32 @@ python train_ddpm.py --config_data ./configs/data/cifar10.yaml \
 ## Sampling
 
 ```shell
-python sample_ddpm.py --config_data CONFIG_DATA \
-                      --config_model CONFIG_MODEL \
-                      --config_diffusion CONFIG_DIFFUSION] \
-                      [--seed SEED] \
-                      --weights WEIGHTS \
-                      [--load_ema LOAD_EMA] \
-                      [--skip_steps SKIP_STEPS] \
-                      --n_samples N_SAMPLES \
-                      --save_dir SAVE_DIR \
-                      [--batch_size BATCH_SIZE] \
-                      [--mode {sample,denoise,progressive}] \
-                      [--n_denoise N_DENOISE] \
-                      [--n_progressive N_PROGRESSIVE] \
-                      [--data_*** ***] \
-                      [--model_*** ***] \
-                      [--diffusion_*** ***]
+accelerate-launch sample_ddpm.py -c CONFIG \
+                                 [--seed SEED] \
+                                 --weights WEIGHTS \
+                                 [--load_ema LOAD_EMA] \
+                                 [--skip_steps SKIP_STEPS] \
+                                 --n_samples N_SAMPLES \
+                                 --save_dir SAVE_DIR \
+                                 [--micro_batch MICRO_BATCH] \
+                                 [--mode {sample,denoise,progressive}] \
+                                 [--n_denoise N_DENOISE] \
+                                 [--n_progressive N_PROGRESSIVE]
 ```
 
-- To sample on multiple GPUs, replace `python` with `torchrun --nproc_per_node NUM_GPUS`.
-- Use `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps. 
+- This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
+- Use `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps.
 - Choose a sampling mode by `--mode MODE`, the options are:
   - `sample` (default): randomly sample images
   - `denoise`: sample images with visualization of its denoising process.
   - `progressive`:  sample images with visualization of its progressive generation process (i.e. predicted $x_0$).
-- Specify `--batch_size BATCH_SIZE` to sample images batch by batch. Set it as large as possible to fully utilize your devices. The default value of 1 is pretty slow.
+- Specify `--micro_batch MICRO_BATCH` to sample images batch by batch. Set it as large as possible to fully utilize your devices.
 
 
 
 ## Evaluation
 
-First, sample 10k~50k images following previous section. Then, run:
-
-```shell
-python evaluate.py --img_size IMG_SIZE \
-                   --n_eval N_EVAL \
-                   [--batch_size BATCH_SIZE] \
-                   --real_dir REAL_DIR \
-                   --fake_dir FAKE_DIR
-```
-
-- To evaluate on multiple GPUs, replace `python` with `torchrun --nproc_per_node NUM_GPUS`.
-- The number of images for evaluation will be adjusted to `min(n_eval, len(real_images), len(fake_images))`.
-- Specify `--batch_size BATCH_SIZE` to evaluate images batch by batch. Set it as large as possible to fully utilize your devices. The default value of 1 is pretty slow.
+Sample 10K-50K images following the previous section and evaluate image quality with tools like [torch-fidelity](https://github.com/toshas/torch-fidelity), [pytorch-fid](https://github.com/mseitzer/pytorch-fid), [clean-fid](https://github.com/GaParmar/clean-fid), etc.
 
 
 
@@ -109,7 +62,7 @@ python evaluate.py --img_size IMG_SIZE \
 
 **FID and IS on CIFAR-10 32x32**:
 
-All the metrics are evaluated on 50K samples.
+All the metrics are evaluated on 50K samples using [torch-fidelity](https://torch-fidelity.readthedocs.io/en/latest/index.html) library.
 
 <table align="center" width=100%>
   <tr>
@@ -121,46 +74,47 @@ All the metrics are evaluated on 50K samples.
   <tr>
     <td align="center" rowspan="4">fixed-large</td>
     <td align="center">1000</td>
-    <td align="center"><b>3.1246</b></td>
-    <td align="center"><b>9.3690 (0.1015)</b></td>
+    <td align="center"><b>3.0459</b></td>
+    <td align="center"><b>9.4515 ± 0.1179</b></td>
   </tr>
   <tr>
     <td align="center">100 (10x faster)</td>
-    <td align="center">45.7398</td>
-    <td align="center">8.6780 (0.1260)</td>
+    <td align="center">46.5454</td>
+    <td align="center">8.7223 ± 0.0923</td>
   </tr>
   <tr>
     <td align="center">50 (20x faster)</td>
-    <td align="center">85.2383</td>
-    <td align="center">6.2571 (0.0939)</td>
+    <td align="center">85.2221</td>
+    <td align="center">6.3863 ± 0.0894</td>
   </tr>
   <tr>
     <td align="center">10 (100x faster)</td>
-    <td align="center">267.5894</td>
-    <td align="center">1.5900 (0.0082)</td>
+    <td align="center">266.7540</td>
+    <td align="center">1.5870 ± 0.0092</td>
   </tr>
   <tr>
     <td align="center" rowspan="4">fixed-small</td>
     <td align="center">1000</td>
-    <td align="center">5.3026</td>
-    <td align="center">8.9711 (0.1172)</td>
+    <td align="center">5.3727</td>
+    <td align="center">9.0118 ± 0.0968</td>
   </tr>
   <tr>
     <td align="center">100 (10x faster)</td>
-    <td align="center">11.1331</td>
-    <td align="center">8.5436 (0.1291)</td>
+    <td align="center">11.2191</td>
+    <td align="center">8.6237 ± 0.0921</td>
   </tr>
   <tr>
     <td align="center">50 (20x faster)</td>
-    <td align="center">15.5682</td>
-    <td align="center">8.3658 (0.0665)</td>
+    <td align="center">15.0471</td>
+    <td align="center">8.4077 ± 0.1623</td>
   </tr>
   <tr>
     <td align="center">10 (100x faster)</td>
-    <td align="center">40.8977</td>
-    <td align="center"> 7.1148 (0.0824)</td>
+    <td align="center">41.04793</td>
+    <td align="center">7.1373 ± 0.0801</td>
   </tr>
  </table>
+
 
 
 **Random samples**:
@@ -176,24 +130,19 @@ All the metrics are evaluated on 50K samples.
 **Denoising process**:
 
 <p align="center">
-  <img src="../assets/ddpm-mnist-denoise.png" width=50% />
+  <img src="../assets/ddpm-cifar10-denoise.png" width=50% />
 </p>
-  <p align="center">
-    <img src="../assets/ddpm-cifar10-denoise.png" width=50% />
-  </p>
-  <p align="center">
-    <img src="../assets/ddpm-celebahq-denoise.png" width=50% />
-  </p>
+<p align="center">
+  <img src="../assets/ddpm-celebahq-denoise.png" width=50% />
+</p>
+
 
 
 **Progressive generation**:
 
 <p align="center">
-  <img src="../assets/ddpm-mnist-progressive.png" width=50% />
+  <img src="../assets/ddpm-cifar10-progressive.png" width=50% />
 </p>
-  <p align="center">
-    <img src="../assets/ddpm-cifar10-progressive.png" width=50% />
-  </p>
-  <p align="center">
-    <img src="../assets/ddpm-celebahq-progressive.png" width=50% />
-  </p>
+<p align="center">
+  <img src="../assets/ddpm-celebahq-progressive.png" width=50% />
+</p>
