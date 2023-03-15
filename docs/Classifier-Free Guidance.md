@@ -6,48 +6,19 @@
 
 ## Training
 
-```shell
-python train_classifier_free.py --config_data CONFIG_DATA \
-                                --config_model CONFIG_MODEL \
-                                --config_diffusion CONFIG_DIFFUSION \
-                                [--name NAME] \
-                                [--no_interaction] \
-                                [--seed SEED] \
-                                [--num_workers NUM_WORKERS] \
-                                [--pin_memory PIN_MEMORY] \
-                                [--prefetch_factor PREFETCH_FACTOR] \
-                                [--batch_size BATCH_SIZE] \
-                                [--micro_batch MICRO_BATCH] \
-                                [--weights WEIGHTS] \
-                                [--resume RESUME] \
-                                [--train_steps TRAIN_STEPS] \
-                                [--print_freq PRINT_FREQ] \
-                                [--sample_freq SAMPLE_FREQ] \
-                                [--save_freq SAVE_FREQ] \
-                                [--n_samples_each_class N_SAMPLES_EACH_CLASS] \
-                                [--ema_decay EMA_DECAY] \
-                                [--ema_gradual EMA_GRADUAL] \
-                                [--p_uncond P_UNCOND] \
-                                [--optim_type OPTIM_TYPE] \
-                                [--lr LR] \
-                                [--data_*** ***] \
-                                [--model_*** ***] \
-                                [--diffusion_*** ***]
+```python
+accelerate-launch train_classifier_free.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
 ```
 
-- To train on multiple GPUs, replace `python` with `torchrun --nproc_per_node NUM_GPUS`.
-- Pass your data configuration file to `--config_data`. Some examples are under `./configs/data/`. Besides creating a new file, you may also override keys by `--data_{key} {value}`.
+- This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
+- Results (logs, checkpoints, tensorboard, etc.) of each run will be saved to `EXP_DIR`. If `EXP_DIR` is not specified, they will be saved to `runs/exp-{current time}/`.
 
-  This also applies to the model and diffusion configurations.
-
-- An experiment directory will be created under `./runs/` for each run, which is named after `NAME`, or the current time if `NAME` is not specified. The directory contains logs, checkpoints, tensorboard, etc.
+- To modify some configuration items without creating a new configuration file, you can pass `--key value` pairs to the script. For example, the default probability to disable guidance in training (`p_uncond`) in `./configs/classifier_free_cifar10.yaml` is 0.2, and if you want to change it to 0.1, you can simply pass `--train.p_uncond 0.1`.
 
 For example, to train on CIFAR-10 with default settings:
 
 ```shell
-python train_classifier_free.py --config_data ./configs/data/cifar10.yaml \
-                                --config_model ./configs/model/unet_conditional.yaml \
-                                --config_diffusion ./configs/diffusion/1000_cosine_predeps_fixedlarge.yaml
+accelerate-launch train_classifier_free.py -c ./configs/classifier_free_cifar10.yaml
 ```
 
 
@@ -55,28 +26,22 @@ python train_classifier_free.py --config_data ./configs/data/cifar10.yaml \
 ## Sampling
 
 ```shell
-python sample_classifier_free.py --config_data CONFIG_DATA \
-                                 --config_model CONFIG_MODEL \
-                                 --config_diffusion CONFIG_DIFFUSION \
-                                 [--seed SEED] \
-                                 --weights WEIGHTS \
-                                 [--load_ema LOAD_EMA] \
-                                 [--skip_steps SKIP_STEPS] \
-                                 --n_samples_each_class N_SAMPLES_EACH_CLASS \
-                                 --guidance_scale GUIDANCE_SCALE \
-                                 [--ddim] \
-                                 [--ddim_eta DDIM_ETA] \
-                                 --save_dir SAVE_DIR \
-                                 [--batch_size BATCH_SIZE] \
-                                 [--data_*** ***] \
-                                 [--model_*** ***] \
-                                 [--diffusion_*** ***]
+accelerate-launch sample_classifier_free.py -c CONFIG \
+                                            [--seed SEED] \
+                                            --weights WEIGHTS \
+                                            [--load_ema LOAD_EMA] \
+                                            [--skip_steps SKIP_STEPS] \
+                                            --n_samples_each_class N_SAMPLES_EACH_CLASS \
+                                            --guidance_scale GUIDANCE_SCALE \
+                                            [--ddim] \
+                                            [--ddim_eta DDIM_ETA] \
+                                            --save_dir SAVE_DIR [--micro_batch MICRO_BATCH]
 ```
 
-- To sample on multiple GPUs, replace `python` with `torchrun --nproc_per_node NUM_GPUS`.
+- This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
 - Use `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps. 
 - Use `--ddim` for DDIM sampling.
-- Specify `--batch_size BATCH_SIZE` to sample images batch by batch. Set it as large as possible to fully utilize your devices. The default value of 1 is pretty slow.
+- Specify `--micro_batch MICRO_BATCH` to sample images batch by batch. Set it as large as possible to fully utilize your devices.
 - I use $s$ in [Classifier Guidance paper](https://arxiv.org/abs/2105.05233) as the scale factor (`--guidance_scale`) rather than $w$ in the [Classifier-Free Guidance paper](https://arxiv.org/abs/2207.12598). In fact, we have $s=w+1$, and:
   - $s=0$: unconditional generation
   - $s=1$: non-guided conditional generation
