@@ -213,7 +213,7 @@ if __name__ == '__main__':
     model = build_model(cfg, with_ema=False)
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
-    if isinstance(model, (models.UNet, models.UNetConditional)):
+    if isinstance(model, (models.UNet, models.UNetCategorialAdaGN)):
         model.load_state_dict(ckpt['ema']['shadow'] if args.load_ema else ckpt['model'])
     else:
         model.load_state_dict(ckpt)

@@ -18,9 +18,9 @@ def build_model(cfg: CN, with_ema: bool = True):
             n_heads=cfg.model.n_heads,
             dropout=cfg.model.dropout,
         )
-    elif cfg.model.type.lower() == 'unet_conditional':
-        from models.unet_conditional import UNetConditional
-        model = UNetConditional(
+    elif cfg.model.type.lower() == 'unet_categorial_adagn':
+        from models.unet_categorial_adagn import UNetCategorialAdaGN
+        model = UNetCategorialAdaGN(
             in_channels=cfg.model.in_channels,
             out_channels=cfg.model.out_channels,
             dim=cfg.model.dim,
@@ -28,8 +28,6 @@ def build_model(cfg: CN, with_ema: bool = True):
             use_attn=cfg.model.use_attn,
             num_res_blocks=cfg.model.num_res_blocks,
             num_classes=cfg.model.num_classes,
-            resblock_groups=cfg.model.resblock_groups,
-            attn_groups=cfg.model.attn_groups,
             attn_head_dims=cfg.model.attn_head_dims,
             resblock_updown=cfg.model.resblock_updown,
             dropout=cfg.model.dropout,

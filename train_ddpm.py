@@ -185,26 +185,28 @@ def train(args, cfg):
 
     @torch.no_grad()
     def sample(savepath: str):
-        num_each_process = cfg.train.n_samples // accelerator.num_processes
+
+        def amortize(n_samples: int, _batch_size: int):
+            k = n_samples // _batch_size
+            r = n_samples % _batch_size
+            return k * [_batch_size] if r == 0 else k * [_batch_size] + [r]
+
         unwrapped_model = accelerator.unwrap_model(model)
         ema.apply_shadow()
-        samples = []
-        total_folds = math.ceil(num_each_process / micro_batch)
+        all_samples = []
         img_shape = (cfg.data.img_channels, cfg.data.img_size, cfg.data.img_size)
-        for i in tqdm.tqdm(range(total_folds), desc='Sampling', leave=False,
-                           disable=not accelerator.is_main_process):
-            n = min(micro_batch, num_each_process - i * micro_batch)
-            init_noise = torch.randn((n, *img_shape), device=device)
-            X = diffuser.sample(
-                model=unwrapped_model,
-                init_noise=init_noise,
-            ).clamp(-1, 1)
-            samples.append(X)
-        samples = torch.cat(samples, dim=0)
-        samples = accelerator.gather(samples)
+        mb = min(micro_batch, math.ceil(cfg.train.n_samples / accelerator.num_processes))
+        batch_size = mb * accelerator.num_processes
+        for bs in tqdm.tqdm(amortize(cfg.train.n_samples, batch_size), desc='Sampling',
+                            leave=False, disable=not accelerator.is_main_process):
+            init_noise = torch.randn((mb, *img_shape), device=device)
+            samples = diffuser.sample(model=unwrapped_model, init_noise=init_noise).clamp(-1, 1)
+            samples = accelerator.gather(samples)[:bs]
+            all_samples.append(samples)
+        all_samples = torch.cat(all_samples, dim=0)
         if accelerator.is_main_process:
             nrow = math.ceil(math.sqrt(cfg.train.n_samples))
-            save_image(samples, savepath, nrow=nrow, normalize=True, value_range=(-1, 1))
+            save_image(all_samples, savepath, nrow=nrow, normalize=True, value_range=(-1, 1))
         ema.restore()
 
     # START TRAINING

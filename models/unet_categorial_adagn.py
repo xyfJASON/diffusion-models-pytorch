@@ -10,14 +10,15 @@ from models.modules import SinusoidalPosEmb, SelfAttentionBlock, Downsample, Ups
 
 
 class ResBlock(nn.Module):
-    def __init__(self,
-                 in_channels: int,
-                 out_channels: int,
-                 embed_dim: int,
-                 groups: int = 32,
-                 dropout: float = 0.1,
-                 up: bool = False,
-                 down: bool = False):
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            embed_dim: int,
+            dropout: float = 0.1,
+            up: bool = False,
+            down: bool = False,
+    ):
         super().__init__()
         assert not (up and down), 'up and down cannot both be True'
         if up:
@@ -28,11 +29,11 @@ class ResBlock(nn.Module):
             self.updown = None
 
         self.blk1 = nn.Sequential(
-            nn.GroupNorm(groups, in_channels),
+            nn.GroupNorm(32, in_channels),
             nn.SiLU(),
             nn.Conv2d(in_channels, out_channels, 3, stride=1, padding=1),
         )
-        self.adagn = AdaGN(groups, out_channels, embed_dim)
+        self.adagn = AdaGN(32, out_channels, embed_dim)
         self.blk2 = nn.Sequential(
             nn.SiLU(),
             nn.Dropout(dropout),
@@ -62,44 +63,45 @@ class ResBlock(nn.Module):
 
 
 class ResBlockUpsample(ResBlock):
-    def __init__(self, in_channels: int, out_channels: int, embed_dim: int, groups: int = 32, dropout: float = 0.1):
-        super().__init__(in_channels, out_channels, embed_dim, groups, dropout, up=True)
+    def __init__(self, in_channels: int, out_channels: int, embed_dim: int, dropout: float = 0.1):
+        super().__init__(in_channels, out_channels, embed_dim, dropout, up=True)
 
 
 class ResBlockDownsample(ResBlock):
-    def __init__(self, in_channels: int, out_channels: int, embed_dim: int, groups: int = 32, dropout: float = 0.1):
-        super().__init__(in_channels, out_channels, embed_dim, groups, dropout, down=True)
+    def __init__(self, in_channels: int, out_channels: int, embed_dim: int, dropout: float = 0.1):
+        super().__init__(in_channels, out_channels, embed_dim, dropout, down=True)
 
 
-class UNetConditional(nn.Module):
-    def __init__(self,
-                 in_channels: int = 3,
-                 out_channels: int = 3,
-                 dim: int = 128,
-                 dim_mults: List[int] = (1, 2, 2, 2),
-                 use_attn: List[int] = (False, True, False, False),
-                 num_res_blocks: int = 2,
-                 num_classes: int = None,
-                 resblock_groups: int = 32,
-                 attn_groups: int = 32,
-                 attn_head_dims: int = 64,
-                 resblock_updown: bool = False,
-                 dropout: float = 0.1):
+class UNetCategorialAdaGN(nn.Module):
+    """ UNet conditioned on categorial labels with AdaGN """
+    def __init__(
+            self,
+            in_channels: int = 3,
+            out_channels: int = 3,
+            dim: int = 128,
+            dim_mults: List[int] = (1, 2, 2, 2),
+            use_attn: List[int] = (False, True, True, False),
+            num_res_blocks: int = 2,
+            num_classes: int = None,
+            attn_head_dims: int = 64,
+            resblock_updown: bool = True,
+            dropout: float = 0.1,
+    ):
         super().__init__()
         n_stages = len(dim_mults)
         dims = [dim]
 
         # Time embeddings
-        time_embed_dim = dim * 4
+        embed_dim = dim * 4
         self.time_embed = nn.Sequential(
             SinusoidalPosEmb(dim),
-            nn.Linear(dim, time_embed_dim),
+            nn.Linear(dim, embed_dim),
             nn.SiLU(),
-            nn.Linear(time_embed_dim, time_embed_dim),
+            nn.Linear(embed_dim, embed_dim),
         )
 
         # Class embeddings
-        self.class_embed = nn.Embedding(num_classes, time_embed_dim) if num_classes is not None else None
+        self.class_embed = nn.Embedding(num_classes, embed_dim) if num_classes is not None else None
 
         # First convolution
         self.first_conv = nn.Conv2d(in_channels, dim, 3, stride=1, padding=1)
@@ -112,22 +114,16 @@ class UNetConditional(nn.Module):
             out_dim = dim * dim_mults[i]
             stage_blocks = nn.ModuleList([])
             for j in range(num_res_blocks):
-                stage_blocks.append(
-                    ResBlock(cur_dim, out_dim, embed_dim=time_embed_dim,
-                             groups=resblock_groups, dropout=dropout)
-                )
+                stage_blocks.append(ResBlock(cur_dim, out_dim, embed_dim=embed_dim, dropout=dropout))
                 if use_attn[i]:
                     assert out_dim % attn_head_dims == 0
                     attn_heads = out_dim // attn_head_dims
-                    stage_blocks.append(SelfAttentionBlock(out_dim, n_heads=attn_heads, groups=attn_groups))
+                    stage_blocks.append(SelfAttentionBlock(out_dim, n_heads=attn_heads))
                 dims.append(out_dim)
                 cur_dim = out_dim
             if i < n_stages - 1:
                 if resblock_updown:
-                    stage_blocks.append(
-                        ResBlockDownsample(out_dim, out_dim, embed_dim=time_embed_dim,
-                                           groups=resblock_groups, dropout=dropout)
-                    )
+                    stage_blocks.append(ResBlockDownsample(out_dim, out_dim, embed_dim=embed_dim, dropout=dropout))
                 else:
                     stage_blocks.append(Downsample(out_dim, out_dim))
                 dims.append(out_dim)
@@ -135,9 +131,9 @@ class UNetConditional(nn.Module):
 
         # Bottleneck block
         self.bottleneck_block = nn.ModuleList([
-            ResBlock(cur_dim, cur_dim, embed_dim=time_embed_dim, dropout=dropout),
+            ResBlock(cur_dim, cur_dim, embed_dim=embed_dim, dropout=dropout),
             SelfAttentionBlock(cur_dim),
-            ResBlock(cur_dim, cur_dim, embed_dim=time_embed_dim, dropout=dropout),
+            ResBlock(cur_dim, cur_dim, embed_dim=embed_dim, dropout=dropout),
         ])
 
         # Up-sample blocks
@@ -147,37 +143,31 @@ class UNetConditional(nn.Module):
             out_dim = dim * dim_mults[i]
             stage_blocks = nn.ModuleList([])
             for j in range(num_res_blocks + 1):
-                stage_blocks.append(
-                    ResBlock(dims.pop() + cur_dim, out_dim, embed_dim=time_embed_dim,
-                             groups=resblock_groups, dropout=dropout)
-                )
+                stage_blocks.append(ResBlock(dims.pop() + cur_dim, out_dim, embed_dim=embed_dim, dropout=dropout))
                 if use_attn[i]:
                     attn_heads = out_dim // attn_head_dims
-                    stage_blocks.append(SelfAttentionBlock(out_dim, n_heads=attn_heads, groups=attn_groups))
+                    stage_blocks.append(SelfAttentionBlock(out_dim, n_heads=attn_heads))
                 cur_dim = out_dim
             if i > 0:
                 if resblock_updown:
-                    stage_blocks.append(
-                        ResBlockUpsample(out_dim, out_dim, embed_dim=time_embed_dim,
-                                         groups=resblock_groups, dropout=dropout)
-                    )
+                    stage_blocks.append(ResBlockUpsample(out_dim, out_dim, embed_dim=embed_dim, dropout=dropout))
                 else:
                     stage_blocks.append(Upsample(out_dim, out_dim))
             self.up_blocks.append(stage_blocks)
 
         # Last convolution
         self.last_conv = nn.Sequential(
-            nn.GroupNorm(resblock_groups, cur_dim),
+            nn.GroupNorm(32, cur_dim),
             nn.SiLU(),
             nn.Conv2d(cur_dim, out_channels, 3, stride=1, padding=1),
         )
 
-    def forward(self, X: Tensor, y: Tensor, T: Tensor):
+    def forward(self, X: Tensor, T: Tensor, y: Tensor = None):
         """
         Args:
             X (Tensor): [bs, C, H, W]
-            y (Tensor): [bs], or None
             T (Tensor): [bs]
+            y (Tensor): [bs] or None, categorial labels
         """
         time_embed = self.time_embed(T)
         if self.class_embed is not None and y is not None:
@@ -204,9 +194,10 @@ class UNetConditional(nn.Module):
 
         for stage_blocks in self.up_blocks:
             for blk in stage_blocks:  # noqa
-                if isinstance(blk, ResBlock):
-                    if not isinstance(blk, ResBlockUpsample):
-                        X = torch.cat((X, skips.pop()), dim=1)
+                if isinstance(blk, ResBlockUpsample):
+                    X = blk(X, time_embed)
+                elif isinstance(blk, ResBlock):
+                    X = torch.cat((X, skips.pop()), dim=1)
                     X = blk(X, time_embed)
                 elif isinstance(blk, SelfAttentionBlock):
                     X = blk(X)
@@ -218,15 +209,15 @@ class UNetConditional(nn.Module):
 
 
 def _test():
-    unet = UNetConditional()
+    unet = UNetCategorialAdaGN()
     X = torch.empty((10, 3, 32, 32))
-    y = torch.arange(10)
     T = torch.arange(10)
-    out = unet(X, y, T)
+    y = torch.arange(10)
+    out = unet(X, T, y)
     print(out.shape)
     print(sum(p.numel() for p in unet.parameters()))
 
-    unet = UNetConditional(
+    unet = UNetCategorialAdaGN(
         in_channels=1,
         out_channels=1,
         dim=128,
@@ -235,9 +226,9 @@ def _test():
         dropout=0.0,
     )
     X = torch.empty((10, 1, 256, 256))
-    y = torch.arange(10)
     T = torch.arange(10)
-    out = unet(X, y, T)
+    y = torch.arange(10)
+    out = unet(X, T, y)
     print(out.shape)
     print(sum(p.numel() for p in unet.parameters()))
 
