@@ -56,10 +56,6 @@ Sample 10K-50K images following the previous section and evaluate image quality 
 
 ## Results
 
-:warning: Generated CelebA-HQ 256x256 images suffer from severe color shifting problem, and I currently have no clue about it.
-
-
-
 **FID and IS on CIFAR-10 32x32**:
 
 All the metrics are evaluated on 50K samples using [torch-fidelity](https://torch-fidelity.readthedocs.io/en/latest/index.html) library.
