@@ -48,15 +48,15 @@ class DDPM:
         a = a.to(device=t.device, dtype=torch.float32)
         return a[t][:, None, None, None]
 
-    def loss_func(self, model: nn.Module, X0: Tensor, t: Tensor, eps: Tensor = None):
+    def loss_func(self, model: nn.Module, X0: Tensor, t: Tensor, eps: Tensor = None, **model_kwargs):
         if eps is None:
             eps = torch.randn_like(X0)
         Xt = self.q_sample(X0, t, eps)
         if self.objective == 'pred_eps':
-            pred_eps = model(Xt, t)
+            pred_eps = model(Xt, t, **model_kwargs)
             return F.mse_loss(pred_eps, eps)
         else:
-            pred_x0 = model(Xt, t)
+            pred_x0 = model(Xt, t, **model_kwargs)
             return F.mse_loss(pred_x0, X0)
 
     def q_sample(self, X0: Tensor, t: Tensor, eps: Tensor = None):
@@ -85,7 +85,11 @@ class DDPM:
         log_var_t = self._extract(self.posterior_log_variance, t)
         return mean_t, var_t, log_var_t
 
-    def p_mean_variance(self, model: nn.Module, Xt: Tensor, t: Tensor, clip_denoised: bool = True):
+    def pred_X0_from_eps(self, Xt: Tensor, t: Tensor, eps: Tensor):
+        return (self._extract(self.sqrt_recip_alphas_cumprod, t) * Xt -
+                self._extract(self.sqrt_recipm1_alphas_cumprod, t) * eps)
+
+    def p_mean_variance(self, model: nn.Module, Xt: Tensor, t: Tensor, clip_denoised: bool = True, **model_kwargs):
         """ Compute mean and variance of p(X{t-1} | Xt)
         Args:
             model (nn.Module): UNet model
@@ -93,7 +97,7 @@ class DDPM:
             t (Tensor): [bs], time steps
             clip_denoised (bool): whether to clip predicted X0 to range [-1, 1]
         """
-        model_output = model(Xt, t)
+        model_output = model(Xt, t, **model_kwargs)
         # p_variance
         if self.var_type == 'fixed_small':
             model_variance = self._extract(self.posterior_variance, t)
@@ -113,7 +117,7 @@ class DDPM:
         # p_mean
         if self.objective == 'pred_eps':
             pred_eps = model_output
-            pred_X0 = self._pred_X0_from_eps(Xt, t, pred_eps)
+            pred_X0 = self.pred_X0_from_eps(Xt, t, pred_eps)
         elif self.objective == 'pred_x0':
             pred_X0 = model_output
         else:
@@ -123,37 +127,24 @@ class DDPM:
         mean_t, _, _ = self.q_posterior_mean_variance(pred_X0, Xt, t)
         return {'mean': mean_t, 'var': model_variance, 'log_var': model_log_variance, 'pred_X0': pred_X0}
 
-    def _pred_X0_from_eps(self, Xt: Tensor, t: Tensor, eps: Tensor):
-        return (self._extract(self.sqrt_recip_alphas_cumprod, t) * Xt -
-                self._extract(self.sqrt_recipm1_alphas_cumprod, t) * eps)
-
-    @torch.no_grad()
-    def p_sample(self, model: nn.Module, Xt: Tensor, t: Tensor, clip_denoised: bool = True):
-        """ Sample from p_theta(X{t-1} | Xt)
-        Args:
-            model (nn.Module): UNet model
-            Xt (Tensor): [bs, C, H, W]
-            t (Tensor): [bs], time steps
-            clip_denoised (bool): whether to clip predicted X0 to range [-1, 1]
-        """
-        out = self.p_mean_variance(model, Xt, t, clip_denoised)
+    def p_sample(self, model: nn.Module, Xt: Tensor, t: Tensor, clip_denoised: bool = True, **model_kwargs):
+        """ Sample from p_theta(X{t-1} | Xt) """
+        out = self.p_mean_variance(model, Xt, t, clip_denoised, **model_kwargs)
         nonzero_mask = torch.ne(t, 0).float().view(-1, 1, 1, 1)
         sample = out['mean'] + nonzero_mask * torch.exp(0.5 * out['log_var']) * torch.randn_like(Xt)
         return {'sample': sample, 'pred_X0': out['pred_X0']}
 
-    @torch.no_grad()
-    def sample_loop(self, model: nn.Module, init_noise: Tensor, clip_denoised: bool = True):
+    def sample_loop(self, model: nn.Module, init_noise: Tensor, clip_denoised: bool = True, **model_kwargs):
         img = init_noise
         for t in range(self.total_steps-1, -1, -1):
             t_batch = torch.full((img.shape[0], ), t, device=img.device, dtype=torch.long)
-            out = self.p_sample(model, img, t_batch, clip_denoised)
+            out = self.p_sample(model, img, t_batch, clip_denoised, **model_kwargs)
             img = out['sample']
             yield out
 
-    @torch.no_grad()
-    def sample(self, model: nn.Module, init_noise: Tensor, clip_denoised: bool = True):
+    def sample(self, model: nn.Module, init_noise: Tensor, clip_denoised: bool = True, **model_kwargs):
         sample = None
-        for out in self.sample_loop(model, init_noise, clip_denoised):
+        for out in self.sample_loop(model, init_noise, clip_denoised, **model_kwargs):
             sample = out['sample']
         return sample
 
@@ -202,7 +193,7 @@ class _WrappedModel:
         if isinstance(timesteps, list):
             self.timesteps = torch.tensor(timesteps)
 
-    def __call__(self, X: Tensor, t: Tensor):
+    def __call__(self, X: Tensor, t: Tensor, **model_kwargs):
         self.timesteps = self.timesteps.to(t.device)
         ts = self.timesteps[t]
-        return self.model(X, ts)
+        return self.model(X, ts, **model_kwargs)

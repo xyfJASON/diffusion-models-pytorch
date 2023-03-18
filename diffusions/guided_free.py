@@ -83,16 +83,16 @@ class GuidedFree:
         log_var_t = self._extract(self.posterior_log_variance, t)
         return mean_t, var_t, log_var_t
 
-    def _pred_X0_from_eps(self, Xt: Tensor, t: Tensor, eps: Tensor):
+    def pred_X0_from_eps(self, Xt: Tensor, t: Tensor, eps: Tensor):
         return (self._extract(self.sqrt_recip_alphas_cumprod, t) * Xt -
                 self._extract(self.sqrt_recipm1_alphas_cumprod, t) * eps)
 
-    def _pred_eps_from_X0(self, Xt: Tensor, t: Tensor, X0: Tensor):
+    def pred_eps_from_X0(self, Xt: Tensor, t: Tensor, X0: Tensor):
         return ((self._extract(self.sqrt_recip_alphas_cumprod, t) * Xt - X0) /
                 self._extract(self.sqrt_recipm1_alphas_cumprod, t))
 
     def p_mean_variance(self, model: nn.Module, Xt: Tensor, t: Tensor, cond: Any = None,
-                        clip_denoised: bool = True, guidance_scale: float = 1.):
+                        clip_denoised: bool = True, guidance_scale: float = 1., **model_kwargs):
         """ Compute mean and variance of p(X{t-1} | Xt)
         Args:
             model (nn.Module): UNet model
@@ -103,8 +103,8 @@ class GuidedFree:
             guidance_scale (float): guidance scale, note that it follows the definition in the classifier guidance paper
                                     and is a bit different from the classifier-free guidance paper
         """
-        model_output_cond = model(Xt, t, cond)
-        model_output_uncond = model(Xt, t, None)
+        model_output_cond = model(Xt, t, cond, **model_kwargs)
+        model_output_uncond = model(Xt, t, None, **model_kwargs)
         # p_variance
         if self.var_type == 'fixed_small':
             model_variance = self._extract(self.posterior_variance, t)
@@ -121,50 +121,46 @@ class GuidedFree:
         elif self.objective == 'pred_x0':
             pred_X0_cond = model_output_cond
             pred_X0_uncond = model_output_uncond
-            pred_eps_cond = self._pred_eps_from_X0(Xt, t, pred_X0_cond)
-            pred_eps_uncond = self._pred_eps_from_X0(Xt, t, pred_X0_uncond)
+            pred_eps_cond = self.pred_eps_from_X0(Xt, t, pred_X0_cond)
+            pred_eps_uncond = self.pred_eps_from_X0(Xt, t, pred_X0_uncond)
         else:
             raise ValueError
         pred_eps = (1 - guidance_scale) * pred_eps_uncond + guidance_scale * pred_eps_cond
-        pred_X0 = self._pred_X0_from_eps(Xt, t, pred_eps)
+        pred_X0 = self.pred_X0_from_eps(Xt, t, pred_eps)
         if clip_denoised:
             pred_X0.clamp_(-1., 1.)
         mean_t, _, _ = self.q_posterior_mean_variance(pred_X0, Xt, t)
         return {'mean': mean_t, 'var': model_variance, 'log_var': model_log_variance, 'pred_X0': pred_X0}
 
-    @torch.no_grad()
     def p_sample(self, model: nn.Module, Xt: Tensor, t: Tensor, cond: Any = None,
-                 clip_denoised: bool = True, guidance_scale: float = 1.):
+                 clip_denoised: bool = True, guidance_scale: float = 1., **model_kwargs):
         """ Sample from p_theta(X{t-1} | Xt) """
-        out = self.p_mean_variance(model, Xt, t, cond, clip_denoised, guidance_scale)
+        out = self.p_mean_variance(model, Xt, t, cond, clip_denoised, guidance_scale, **model_kwargs)
         nonzero_mask = torch.ne(t, 0).float().view(-1, 1, 1, 1)
         sample = out['mean'] + nonzero_mask * torch.exp(0.5 * out['log_var']) * torch.randn_like(Xt)
         return {'sample': sample, 'pred_X0': out['pred_X0']}
 
-    @torch.no_grad()
     def sample_loop(self, model: nn.Module, init_noise: Tensor, cond: Any = None,
-                    clip_denoised: bool = True, guidance_scale: float = 1.):
+                    clip_denoised: bool = True, guidance_scale: float = 1., **model_kwargs):
         img = init_noise
         for t in range(self.total_steps-1, -1, -1):
             t_batch = torch.full((img.shape[0], ), t, device=img.device, dtype=torch.long)
-            out = self.p_sample(model, img, t_batch, cond, clip_denoised, guidance_scale)
+            out = self.p_sample(model, img, t_batch, cond, clip_denoised, guidance_scale, **model_kwargs)
             img = out['sample']
             yield out
 
-    @torch.no_grad()
     def sample(self, model: nn.Module, init_noise: Tensor, cond: Any = None,
-               clip_denoised: bool = True, guidance_scale: float = 1.):
+               clip_denoised: bool = True, guidance_scale: float = 1., **model_kwargs):
         sample = None
-        for out in self.sample_loop(model, init_noise, cond, clip_denoised, guidance_scale):
+        for out in self.sample_loop(model, init_noise, cond, clip_denoised, guidance_scale, **model_kwargs):
             sample = out['sample']
         return sample
 
-    @torch.no_grad()
     def ddim_p_sample(self, model: nn.Module, Xt: Tensor, t: Tensor, cond: Any = None,
-                      clip_denoised: bool = True, guidance_scale: float = 1., eta=0.0):
+                      clip_denoised: bool = True, guidance_scale: float = 1., eta=0.0, **model_kwargs):
         """ Sample from p_theta(X{t-1} | Xt) using DDIM, similar to p_sample() """
-        out = self.p_mean_variance(model, Xt, t, cond, clip_denoised, guidance_scale)
-        pred_eps = self._pred_eps_from_X0(Xt, t, out['pred_X0'])
+        out = self.p_mean_variance(model, Xt, t, cond, clip_denoised, guidance_scale, **model_kwargs)
+        pred_eps = self.pred_eps_from_X0(Xt, t, out['pred_X0'])
         alphas_cumprod_t = self._extract(self.alphas_cumprod, t)
         alphas_cumprod_prev_t = self._extract(self.alphas_cumprod_prev, t)
         var_t = ((eta ** 2) *
@@ -176,21 +172,19 @@ class GuidedFree:
         sample = mean_t + nonzero_mask * torch.sqrt(var_t) * torch.randn_like(Xt)
         return {'sample': sample, 'pred_X0': out['pred_X0']}
 
-    @torch.no_grad()
     def ddim_sample_loop(self, model: nn.Module, init_noise: Tensor, cond: Any = None,
-                         clip_denoised: bool = True, guidance_scale: float = 1., eta: float = 0.):
+                         clip_denoised: bool = True, guidance_scale: float = 1., eta: float = 0., **model_kwargs):
         img = init_noise
         for t in range(self.total_steps-1, -1, -1):
             t_batch = torch.full((img.shape[0], ), t, device=img.device, dtype=torch.long)
-            out = self.ddim_p_sample(model, img, t_batch, cond, clip_denoised, guidance_scale, eta)
+            out = self.ddim_p_sample(model, img, t_batch, cond, clip_denoised, guidance_scale, eta, **model_kwargs)
             img = out['sample']
             yield out
 
-    @torch.no_grad()
     def ddim_sample(self, model: nn.Module, init_noise: Tensor, cond: Any = None,
-                    clip_denoised: bool = True, guidance_scale: float = 1., eta: float = 0.):
+                    clip_denoised: bool = True, guidance_scale: float = 1., eta: float = 0., **model_kwargs):
         sample = None
-        for out in self.ddim_sample_loop(model, init_noise, cond, clip_denoised, guidance_scale, eta):
+        for out in self.ddim_sample_loop(model, init_noise, cond, clip_denoised, guidance_scale, eta, **model_kwargs):
             sample = out['sample']
         return sample
 
@@ -239,7 +233,7 @@ class _WrappedModel:
         if isinstance(timesteps, list):
             self.timesteps = torch.tensor(timesteps)
 
-    def __call__(self, X: Tensor, t: Tensor, cond: Any):
+    def __call__(self, X: Tensor, t: Tensor, cond: Any, **model_kwargs):
         self.timesteps = self.timesteps.to(t.device)
         ts = self.timesteps[t]
-        return self.model(X, ts, cond)
+        return self.model(X, ts, cond, **model_kwargs)
