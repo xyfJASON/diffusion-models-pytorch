@@ -42,8 +42,8 @@ def get_parser():
         help='Parameter eta in DDIM sampling',
     )
     parser.add_argument(
-        '--skip_type', type=str, default='uniform', choices=['uniform', 'quad'],
-        help='Choose a type of skip sequence',
+        '--skip_type', type=str, default=None,
+        help='Type of skip sampling',
     )
     parser.add_argument(
         '--skip_steps', type=int, default=None,
@@ -184,33 +184,21 @@ if __name__ == '__main__':
     accelerator.wait_for_everyone()
 
     # BUILD DIFFUSER
-    betas = diffusions.get_beta_schedule(
-        beta_schedule=cfg.diffusion.beta_schedule,
+    diffuser = diffusions.ddim.DDIM(
         total_steps=cfg.diffusion.total_steps,
+        beta_schedule=cfg.diffusion.beta_schedule,
         beta_start=cfg.diffusion.beta_start,
         beta_end=cfg.diffusion.beta_end,
+        objective=cfg.diffusion.objective,
+        skip_type=args.skip_type,
+        skip_steps=args.skip_steps,
+        eta=args.ddim_eta,
+        device=device,
     )
-    if args.skip_steps is None:
-        diffuser = diffusions.DDIM(
-            betas=betas,
-            objective=cfg.diffusion.objective,
-            eta=args.ddim_eta,
-        )
-    else:
-        timesteps = diffusions.get_skip_seq(
-            skip_type=args.skip_type,
-            skip_steps=args.skip_steps,
-            total_steps=cfg.diffusion.total_steps,
-        )
-        diffuser = diffusions.DDIMSkip(
-            timesteps=timesteps,
-            betas=betas,
-            objective=cfg.diffusion.objective,
-            eta=args.ddim_eta,
-        )
 
     # BUILD MODEL
     model = build_model(cfg, with_ema=False)
+
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
     if isinstance(model, (models.UNet, models.UNetCategorialAdaGN)):
@@ -218,6 +206,7 @@ if __name__ == '__main__':
     else:
         model.load_state_dict(ckpt)
     logger.info(f'Successfully load model from {args.weights}')
+
     # PREPARE FOR DISTRIBUTED MODE AND MIXED PRECISION
     model = accelerator.prepare(model)
     model.eval()

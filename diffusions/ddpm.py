@@ -161,7 +161,7 @@ class DDPM:
 
         # Process model's output
         learned_var = None
-        if var_type == 'learned_range':
+        if model_output.shape[1] > xt.shape[1]:
             model_output, learned_var = torch.split(model_output, xt.shape[1], dim=1)
 
         # Calculate the predicted x0
@@ -215,7 +215,7 @@ class DDPM:
             yield out
 
     def sample(self, model: nn.Module, init_noise: Tensor,
-               var_type: str = None, clip_denoised: bool = True, **model_kwargs):
+               var_type: str = None, clip_denoised: bool = None, **model_kwargs):
         sample = None
         for out in self.sample_loop(model, init_noise, var_type, clip_denoised, **model_kwargs):
             sample = out['sample']
