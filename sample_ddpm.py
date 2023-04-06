@@ -36,6 +36,14 @@ def get_parser():
         help='Whether to load ema weights',
     )
     parser.add_argument(
+        '--var_type', type=str, default=None,
+        help='Type of variance of the reverse process',
+    )
+    parser.add_argument(
+        '--skip_type', type=str, default=None,
+        help='Type of skip sampling',
+    )
+    parser.add_argument(
         '--skip_steps', type=int, default=None,
         help='Number of timesteps for skip sampling',
     )
@@ -126,7 +134,7 @@ def sample_progressive():
         init_noise = torch.randn((micro_batch, *img_shape), device=device)
         sample_loop = diffuser.sample_loop(model=model, init_noise=init_noise)
         samples = [
-            out['pred_X0'] for timestep, out in enumerate(sample_loop)
+            out['pred_x0'] for timestep, out in enumerate(sample_loop)
             if (diffuser.total_steps - timestep - 1) % freq == 0
         ]
         samples = torch.stack(samples, dim=1).clamp(-1, 1)
@@ -167,27 +175,17 @@ if __name__ == '__main__':
     accelerator.wait_for_everyone()
 
     # BUILD DIFFUSER
-    betas = diffusions.get_beta_schedule(
-        beta_schedule=cfg.diffusion.beta_schedule,
+    diffuser = diffusions.ddpm.DDPM(
         total_steps=cfg.diffusion.total_steps,
+        beta_schedule=cfg.diffusion.beta_schedule,
         beta_start=cfg.diffusion.beta_start,
         beta_end=cfg.diffusion.beta_end,
+        objective=cfg.diffusion.objective,
+        var_type=args.var_type if args.var_type is not None else cfg.diffusion.var_type,
+        skip_type=args.skip_type if args.skip_type is not None else None,
+        skip_steps=args.skip_steps,
+        device=device,
     )
-    if args.skip_steps is None:
-        diffuser = diffusions.ddpm.DDPM(
-            betas=betas,
-            objective=cfg.diffusion.objective,
-            var_type=cfg.diffusion.var_type,
-        )
-    else:
-        skip = cfg.diffusion.total_steps // args.skip_steps
-        timesteps = torch.arange(0, cfg.diffusion.total_steps, skip)
-        diffuser = diffusions.ddpm.DDPMSkip(
-            timesteps=timesteps,
-            betas=betas,
-            objective=cfg.diffusion.objective,
-            var_type=cfg.diffusion.var_type,
-        )
     # BUILD MODEL
     model = build_model(cfg, with_ema=False)
     # LOAD WEIGHTS

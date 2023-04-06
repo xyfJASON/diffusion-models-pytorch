@@ -5,7 +5,7 @@ import torch.optim as optim
 import models
 
 
-def build_model(cfg: CN, with_ema: bool = True):
+def build_model(cfg: CN, with_ema: bool = False):
     if cfg.model.type.lower() == 'unet':
         from models.unet import UNet
         model = UNet(

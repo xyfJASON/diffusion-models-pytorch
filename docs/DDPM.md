@@ -29,6 +29,8 @@ accelerate-launch sample_ddpm.py -c CONFIG \
                                  [--seed SEED] \
                                  --weights WEIGHTS \
                                  [--load_ema LOAD_EMA] \
+                                 [--var_type VAR_TYPE] \
+                                 [--skip_type SKIP_TYPE] \
                                  [--skip_steps SKIP_STEPS] \
                                  --n_samples N_SAMPLES \
                                  --save_dir SAVE_DIR \

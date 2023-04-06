@@ -10,13 +10,14 @@ def get_beta_schedule(
 ):
     """
     Args:
-        total_steps (int): number of diffusion steps
-        beta_schedule (str): type of beta schedule. Options: 'linear', 'quad', 'const', 'cosine'
-        beta_start (float): starting beta value
-        beta_end (float): ending beta value
+        total_steps: Number of diffusion steps.
+        beta_schedule: Type of beta schedule. Options: 'linear', 'quad', 'const', 'cosine'.
+        beta_start: Starting beta value.
+        beta_end: Ending beta value.
 
     Returns:
-        A Tensor of length `total_steps`
+        A Tensor of length `total_steps`.
+
     """
     if beta_schedule == 'linear':
         return torch.linspace(beta_start, beta_end, total_steps, dtype=torch.float64)
@@ -39,25 +40,30 @@ def get_beta_schedule(
 def get_skip_seq(
         total_steps: int = 1000,
         skip_type: str = 'uniform',
-        skip_steps: int = 1000,
+        skip_steps: int = 100,
 ):
     """
     Args:
-        total_steps (int): number of the original diffusion steps
-        skip_type (str): type of skip sequence
-        skip_steps (int): number of skipped (respaced) diffusion steps
+        total_steps: Number of the original diffusion steps.
+        skip_type: Type of skip sequence. Options: 'uniform', 'uniform2', 'quad', None.
+        skip_steps: Number of skipped (respaced) diffusion steps.
 
     Returns:
-        A Tensor of length `skip_steps`, containing indices that are preserved in the skipped sequence
+        A Tensor of length `skip_steps`, containing indices that are preserved in the skipped sequence.
+
     """
     if skip_type == 'uniform':
         skip = total_steps // skip_steps
-        seq = torch.arange(0, total_steps, skip)
+        seq = torch.arange(0, total_steps, skip).long()
+    elif skip_type == 'uniform2':
+        seq = torch.linspace(0, total_steps-1, skip_steps).long()
     elif skip_type == 'quad':
         seq = torch.linspace(0, math.sqrt(total_steps * 0.8), skip_steps) ** 2
         seq = torch.floor(seq).long()
+    elif skip_type is None:
+        seq = torch.arange(0, total_steps).long()
     else:
-        raise ValueError(f'skip_type {skip_type} is not valid')
+        raise ValueError(f'Skip type {skip_type} is not supported.')
     return seq
 
 

@@ -47,7 +47,7 @@ def train(args, cfg):
     if accelerator.is_main_process:
         create_exp_dir(
             exp_dir=exp_dir,
-            cfg_dump=cfg.dump(),
+            cfg_dump=cfg.dump(sort_keys=False),
             exist_ok=cfg.train.resume is not None,
             time_str=args.time_str,
             no_interaction=args.no_interaction,
@@ -98,16 +98,14 @@ def train(args, cfg):
     logger.info(f'Total batch size: {cfg.train.batch_size}')
 
     # BUILD DIFFUSER
-    betas = diffusions.schedule.get_beta_schedule(
-        beta_schedule=cfg.diffusion.beta_schedule,
+    diffuser = diffusions.ddpm.DDPM(
         total_steps=cfg.diffusion.total_steps,
+        beta_schedule=cfg.diffusion.beta_schedule,
         beta_start=cfg.diffusion.beta_start,
         beta_end=cfg.diffusion.beta_end,
-    )
-    diffuser = diffusions.ddpm.DDPM(
-        betas=betas,
         objective=cfg.diffusion.objective,
         var_type=cfg.diffusion.var_type,
+        device=device,
     )
 
     # BUILD MODEL AND OPTIMIZERS
@@ -131,19 +129,18 @@ def train(args, cfg):
         ckpt_meta = torch.load(os.path.join(ckpt_path, 'meta.pt'), map_location='cpu')
         step = ckpt_meta['step'] + 1
 
+    @accelerator.on_main_process
     def save_ckpt(save_path: str):
-        if accelerator.is_main_process:
-            os.makedirs(save_path, exist_ok=True)
-            unwrapped_model = accelerator.unwrap_model(model)
-            model_state_dicts = dict(
-                model=unwrapped_model.state_dict(),
-                ema=ema.state_dict(),
-            )
-            accelerator.save(model_state_dicts, os.path.join(save_path, 'model.pt'))
-            optimizer_state_dicts = dict(optimizer=optimizer.state_dict())
-            accelerator.save(optimizer_state_dicts, os.path.join(save_path, 'optimizer.pt'))
-            meta_state_dicts = dict(step=step)
-            accelerator.save(meta_state_dicts, os.path.join(save_path, 'meta.pt'))
+        os.makedirs(save_path, exist_ok=True)
+        # save model
+        accelerator.save(dict(
+            model=accelerator.unwrap_model(model).state_dict(),
+            ema=ema.state_dict(),
+        ), os.path.join(save_path, 'model.pt'))
+        # save optimizer
+        accelerator.save(dict(optimizer=optimizer.state_dict()), os.path.join(save_path, 'optimizer.pt'))
+        # save meta information
+        accelerator.save(dict(step=step), os.path.join(save_path, 'meta.pt'))
 
     # RESUME TRAINING
     if cfg.train.resume is not None:
@@ -155,7 +152,6 @@ def train(args, cfg):
     # PREPARE FOR DISTRIBUTED MODE AND MIXED PRECISION
     model, optimizer, train_loader = accelerator.prepare(model, optimizer, train_loader)  # type: ignore
     ema.to(device)
-    loss_meter = AverageMeter()
 
     accelerator.wait_for_everyone()
 
@@ -164,7 +160,7 @@ def train(args, cfg):
         if isinstance(_batch, (tuple, list)):
             _batch = _batch[0]
         batch_size = _batch.shape[0]
-        loss_meter.reset()
+        loss_meter = AverageMeter()
         for i in range(0, batch_size, micro_batch):
             X = _batch[i:i+micro_batch].float()
             t = torch.randint(cfg.diffusion.total_steps, (X.shape[0], ), device=device).long()
@@ -172,7 +168,7 @@ def train(args, cfg):
             no_sync = (i + micro_batch) < batch_size
             cm = accelerator.no_sync(model) if no_sync else nullcontext()
             with cm:
-                loss = diffuser.loss_func(model, X0=X, t=t)
+                loss = diffuser.loss_func(model, x0=X, t=t)
                 accelerator.backward(loss * loss_scale)
             loss_meter.update(loss.item(), X.shape[0])
         accelerator.clip_grad_norm_(model.parameters(), max_norm=cfg.train.clip_grad_norm)
