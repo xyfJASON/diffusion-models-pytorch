@@ -36,17 +36,21 @@ def get_parser():
         help='Whether to load ema weights',
     )
     parser.add_argument(
-        '--skip_steps', type=int, default=None,
-        help='Number of timesteps for skip sampling',
+        '--skip_type', type=str, default=None,
+        help='Type of skip sampling',
     )
     parser.add_argument(
-        '--n_samples_each_class', type=int, required=True,
-        help='Number of samples in each class',
+        '--skip_steps', type=int, default=None,
+        help='Number of timesteps for skip sampling',
     )
     parser.add_argument(
         '--guidance_scale', type=float, required=True,
         help='guidance scale. 0 for unconditional generation, '
              '1 for non-guided generation, >1 for guided generation',
+    )
+    parser.add_argument(
+        '--n_samples_each_class', type=int, required=True,
+        help='Number of samples in each class',
     )
     parser.add_argument(
         '--ddim', action='store_true',
@@ -90,12 +94,7 @@ def sample():
                             disable=not accelerator.is_main_process):
             init_noise = torch.randn((bs, *img_shape), device=device)
             labels = torch.full((bs, ), fill_value=c, device=device)
-            samples = sample_fn(
-                model=model,
-                init_noise=init_noise,
-                cond=labels,
-                guidance_scale=args.guidance_scale,
-            ).clamp(-1, 1)
+            samples = sample_fn(model=model, init_noise=init_noise, cond=labels).clamp(-1, 1)
             samples = accelerator.gather(samples)[:bs]
             if accelerator.is_main_process:
                 for x in samples:
@@ -133,27 +132,19 @@ if __name__ == '__main__':
     accelerator.wait_for_everyone()
 
     # BUILD DIFFUSER
-    betas = diffusions.schedule.get_beta_schedule(
-        beta_schedule=cfg.diffusion.beta_schedule,
+    diffuser = diffusions.guided_free.GuidedFree(
         total_steps=cfg.diffusion.total_steps,
+        beta_schedule=cfg.diffusion.beta_schedule,
         beta_start=cfg.diffusion.beta_start,
         beta_end=cfg.diffusion.beta_end,
+        objective=cfg.diffusion.objective,
+        var_type=cfg.diffusion.var_type,
+        skip_type=args.skip_type,
+        skip_steps=args.skip_steps,
+        guidance_scale=args.guidance_scale,
+        device=device,
     )
-    if args.skip_steps is None:
-        diffuser = diffusions.guided_free.GuidedFree(
-            betas=betas,
-            objective=cfg.diffusion.objective,
-            var_type=cfg.diffusion.var_type,
-        )
-    else:
-        skip = cfg.diffusion.total_steps // args.skip_steps
-        timesteps = torch.arange(0, cfg.diffusion.total_steps, skip)
-        diffuser = diffusions.guided_free.GuidedFreeSkip(
-            timesteps=timesteps,
-            betas=betas,
-            objective=cfg.diffusion.objective,
-            var_type=cfg.diffusion.var_type,
-        )
+
     # BUILD MODEL
     model = build_model(cfg, with_ema=False)
     # LOAD WEIGHTS

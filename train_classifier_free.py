@@ -47,7 +47,7 @@ def train(args, cfg):
     if accelerator.is_main_process:
         create_exp_dir(
             exp_dir=exp_dir,
-            cfg_dump=cfg.dump(),
+            cfg_dump=cfg.dump(sort_keys=False),
             exist_ok=cfg.train.resume is not None,
             time_str=args.time_str,
             no_interaction=args.no_interaction,
@@ -98,23 +98,15 @@ def train(args, cfg):
     logger.info(f'Total batch size: {cfg.train.batch_size}')
 
     # BUILD DIFFUSER
-    betas = diffusions.schedule.get_beta_schedule(
-        beta_schedule=cfg.diffusion.beta_schedule,
+    diffuser = diffusions.guided_free.GuidedFree(
         total_steps=cfg.diffusion.total_steps,
+        beta_schedule=cfg.diffusion.beta_schedule,
         beta_start=cfg.diffusion.beta_start,
         beta_end=cfg.diffusion.beta_end,
-    )
-    diffuser = diffusions.guided_free.GuidedFree(
-        betas=betas,
         objective=cfg.diffusion.objective,
         var_type=cfg.diffusion.var_type,
-    )
-    timesteps = diffusions.schedule.get_skip_seq(skip_steps=cfg.diffusion.total_steps // 20)
-    diffuser_skip = diffusions.guided_free.GuidedFreeSkip(
-        timesteps=timesteps,
-        betas=betas,
-        objective=cfg.diffusion.objective,
-        var_type=cfg.diffusion.var_type,
+        guidance_scale=1.0,
+        device=device,
     )
 
     # BUILD MODEL AND OPTIMIZERS
@@ -138,19 +130,18 @@ def train(args, cfg):
         ckpt_meta = torch.load(os.path.join(ckpt_path, 'meta.pt'), map_location='cpu')
         step = ckpt_meta['step'] + 1
 
+    @accelerator.on_main_process
     def save_ckpt(save_path: str):
-        if accelerator.is_main_process:
-            os.makedirs(save_path, exist_ok=True)
-            unwrapped_model = accelerator.unwrap_model(model)
-            model_state_dicts = dict(
-                model=unwrapped_model.state_dict(),
-                ema=ema.state_dict(),
-            )
-            accelerator.save(model_state_dicts, os.path.join(save_path, 'model.pt'))
-            optimizer_state_dicts = dict(optimizer=optimizer.state_dict())
-            accelerator.save(optimizer_state_dicts, os.path.join(save_path, 'optimizer.pt'))
-            meta_state_dicts = dict(step=step)
-            accelerator.save(meta_state_dicts, os.path.join(save_path, 'meta.pt'))
+        os.makedirs(save_path, exist_ok=True)
+        # save model
+        accelerator.save(dict(
+            model=accelerator.unwrap_model(model).state_dict(),
+            ema=ema.state_dict(),
+        ), os.path.join(save_path, 'model.pt'))
+        # save optimizer
+        accelerator.save(dict(optimizer=optimizer.state_dict()), os.path.join(save_path, 'optimizer.pt'))
+        # save meta information
+        accelerator.save(dict(step=step), os.path.join(save_path, 'meta.pt'))
 
     # RESUME TRAINING
     if cfg.train.resume is not None:
@@ -162,7 +153,6 @@ def train(args, cfg):
     # PREPARE FOR DISTRIBUTED MODE AND MIXED PRECISION
     model, optimizer, train_loader = accelerator.prepare(model, optimizer, train_loader)  # type: ignore
     ema.to(device)
-    loss_meter = AverageMeter()
 
     accelerator.wait_for_everyone()
 
@@ -170,7 +160,7 @@ def train(args, cfg):
         optimizer.zero_grad()
         batchX, batchy = _batch
         batch_size = batchX.shape[0]
-        loss_meter.reset()
+        loss_meter = AverageMeter()
         for i in range(0, batch_size, micro_batch):
             X = batchX[i:i+micro_batch].float()
             y = batchy[i:i+micro_batch].long()
@@ -181,7 +171,7 @@ def train(args, cfg):
             no_sync = (i + micro_batch) < batch_size
             cm = accelerator.no_sync(model) if no_sync else nullcontext()
             with cm:
-                loss = diffuser.loss_func(model, X0=X, t=t, cond=y)
+                loss = diffuser.loss_func(model, x0=X, t=t, cond=y)
                 accelerator.backward(loss * loss_scale)
             loss_meter.update(loss.item(), X.shape[0])
         accelerator.clip_grad_norm_(model.parameters(), max_norm=cfg.train.clip_grad_norm)
@@ -202,6 +192,9 @@ def train(args, cfg):
 
         unwrapped_model = accelerator.unwrap_model(model)
         ema.apply_shadow()
+        # use skipped ddim to save time during training
+        diffuser.set_skip_seq('uniform', diffuser.total_steps // 20)
+
         all_samples = []
         img_shape = (cfg.data.img_channels, cfg.data.img_size, cfg.data.img_size)
         mb = min(micro_batch, math.ceil(cfg.train.n_samples_each_class / accelerator.num_processes))
@@ -212,21 +205,21 @@ def train(args, cfg):
                                 leave=False, disable=not accelerator.is_main_process):
                 init_noise = torch.randn((mb, *img_shape), device=device)
                 labels = torch.full((mb, ), fill_value=c, device=device)
-                # use skipped ddim to save time during training
-                samples = diffuser_skip.ddim_sample(
+                samples = diffuser.ddim_sample(
                     model=unwrapped_model,
                     init_noise=init_noise,
                     cond=labels,
-                    guidance_scale=1.,
                 ).clamp(-1, 1)
                 samples = accelerator.gather(samples)[:bs]
                 samples_c.append(samples)
             samples_c = torch.cat(samples_c, dim=0)
             all_samples.append(samples_c)
-        all_samples = torch.stack(all_samples, dim=1).view(-1, *img_shape)
+        all_samples = torch.cat(all_samples, dim=0).view(-1, *img_shape)
         if accelerator.is_main_process:
-            nrow = math.ceil(min(10, cfg.data.num_classes))
+            nrow = cfg.train.n_samples_each_class
             save_image(all_samples, savepath, nrow=nrow, normalize=True, value_range=(-1, 1))
+
+        diffuser.set_skip_seq('none', diffuser.total_steps)
         ema.restore()
 
     # START TRAINING

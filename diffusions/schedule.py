@@ -45,7 +45,7 @@ def get_skip_seq(
     """
     Args:
         total_steps: Number of the original diffusion steps.
-        skip_type: Type of skip sequence. Options: 'uniform', 'uniform2', 'quad', None.
+        skip_type: Type of skip sequence. Options: 'uniform', 'uniform2', 'quad', 'none', None.
         skip_steps: Number of skipped (respaced) diffusion steps.
 
     Returns:
@@ -60,7 +60,7 @@ def get_skip_seq(
     elif skip_type == 'quad':
         seq = torch.linspace(0, math.sqrt(total_steps * 0.8), skip_steps) ** 2
         seq = torch.floor(seq).long()
-    elif skip_type is None:
+    elif skip_type is None or skip_type == 'none':
         seq = torch.arange(0, total_steps).long()
     else:
         raise ValueError(f'Skip type {skip_type} is not supported.')

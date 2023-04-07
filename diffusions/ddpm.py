@@ -53,7 +53,6 @@ class DDPM:
                       This argument doesn't affect training and can be overridden by `set_skip_seq()`.
 
         """
-        super().__init__()
         assert objective in ['pred_eps', 'pred_x0']
         assert var_type in ['fixed_small', 'fixed_large', 'learned_range']
         self.total_steps = total_steps
