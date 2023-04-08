@@ -30,16 +30,18 @@ accelerate-launch sample_classifier_free.py -c CONFIG \
                                             [--seed SEED] \
                                             --weights WEIGHTS \
                                             [--load_ema LOAD_EMA] \
+                                            [--skip_type SKIP_TYPE] \
                                             [--skip_steps SKIP_STEPS] \
-                                            --n_samples_each_class N_SAMPLES_EACH_CLASS \
                                             --guidance_scale GUIDANCE_SCALE \
+                                            --n_samples_each_class N_SAMPLES_EACH_CLASS \
                                             [--ddim] \
                                             [--ddim_eta DDIM_ETA] \
-                                            --save_dir SAVE_DIR [--micro_batch MICRO_BATCH]
+                                            --save_dir SAVE_DIR \
+                                            [--micro_batch MICRO_BATCH]
 ```
 
 - This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
-- Use `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps. 
+- Use `--skip_type SKIP_TYPE` and `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps. 
 - Use `--ddim` for DDIM sampling.
 - Specify `--micro_batch MICRO_BATCH` to sample images batch by batch. Set it as large as possible to fully utilize your devices.
 - I use $s$ in [Classifier Guidance paper](https://arxiv.org/abs/2105.05233) as the scale factor (`--guidance_scale`) rather than $w$ in the [Classifier-Free Guidance paper](https://arxiv.org/abs/2207.12598). In fact, we have $s=w+1$, and:

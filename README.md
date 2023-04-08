@@ -9,6 +9,9 @@ My implementations of Diffusion Models with PyTorch.
 - [x] DDPM
 - [x] DDIM
 - [x] Classifier-Free Guidance
+- [ ] Guidance
+  - [ ] CLIP Guidance
+
 
 <br/>
 
@@ -48,6 +51,17 @@ For instructions on training / sampling / evaluation and more quantitative & qua
 <p align="center">
   <img src="./assets/classifier-free-cifar10.png" />
 </p>
+<br/>
+
+
+
+## CLIP Guidance
+
+<p align="center">
+  <img src="./assets/clip-guidance-celebahq-1.png" width=48% />
+  <img src="./assets/clip-guidance-celebahq-4.png" width=48% />
+</p>
+
 <br/>
 
 
