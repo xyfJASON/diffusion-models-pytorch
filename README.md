@@ -58,9 +58,9 @@ For instructions on training / sampling / evaluation and more quantitative & qua
 ## CLIP Guidance
 
 <p align="center">
-  <img src="./assets/clip-guidance-celebahq-1.png" width=48% />
-  <img src="./assets/clip-guidance-celebahq-4.png" width=48% />
+  <img src="./assets/clip-guidance-celebahq.png" width=80% />
 </p>
+
 
 <br/>
 

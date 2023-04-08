@@ -208,7 +208,7 @@ class Guided:
             logvar = torch.log(var)
         elif var_type == 'learned_range':
             min_var = betas_t * (1. - alphas_cumprod_t_prev) / (1. - alphas_cumprod_t)
-            min_logvar = torch.log(torch.cat([min_var[[1]], min_var[1:]]))
+            min_logvar = torch.log(torch.clamp_min(min_var, 1e-20))
             max_logvar = torch.log(betas_t)
             frac = (learned_var + 1) / 2  # [-1, 1] --> [0, 1]
             logvar = frac * max_logvar + (1 - frac) * min_logvar
