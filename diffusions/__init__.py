@@ -3,3 +3,4 @@ from .ddpm import DDPM
 from .ddim import DDIM
 from .guided_free import GuidedFree
 from .applications.clip_guided import CLIPGuided
+from .applications.mask_guided import MaskGuided

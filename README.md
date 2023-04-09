@@ -10,7 +10,8 @@ My implementations of Diffusion Models with PyTorch.
 - [x] DDIM
 - [x] Classifier-Free Guidance
 - [ ] Guidance
-  - [ ] CLIP Guidance
+  - [x] CLIP Guidance
+  - [x] Mask Guidance
 
 
 <br/>
@@ -60,7 +61,15 @@ For instructions on training / sampling / evaluation and more quantitative & qua
 <p align="center">
   <img src="./assets/clip-guidance-celebahq.png" width=80% />
 </p>
+<br/>
 
+
+
+## Mask Guidance
+
+<p align="center">
+  <img src="./assets/mask-guidance-imagenet.png" width=80% />
+</p>
 
 <br/>
 
