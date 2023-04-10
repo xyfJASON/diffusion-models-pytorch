@@ -48,40 +48,24 @@ class MaskGuided(Guided):
         self.masked_image = masked_image
         self.mask = mask
 
+    def cond_fn_sample(self, t: int, t_prev: int, sample: Tensor, **kwargs) -> Tensor:
+        assert self.masked_image is not None, f'Please call `set_mask_and_image()` before sampling.'
+        assert self.mask is not None, f'Please call `set_mask_and_image()` before sampling.'
+        if t == 0:
+            noisy_known = self.masked_image
+        else:
+            noisy_known = self.q_sample(
+                x0=self.masked_image,
+                t=torch.full((sample.shape[0], ), t_prev, device=self.device),
+            )
+        return (noisy_known - sample) * self.mask
+
     def q_sample_one_step(self, xt: Tensor, t: int, t_next: int):
         """ Sample from q(x{t+1} | xt). """
         alphas_cumprod_t = self.alphas_cumprod[t]
         alphas_cumprod_t_next = self.alphas_cumprod[t_next] if t_next < self.total_steps else torch.tensor(0.0)
         alphas_t_next = alphas_cumprod_t_next / alphas_cumprod_t
         return torch.sqrt(alphas_t_next) * xt + torch.sqrt(1. - alphas_t_next) * torch.randn_like(xt)
-
-    def p_sample(self, model_output: Tensor, xt: Tensor, t: int, t_prev: int,
-                 var_type: str = None, clip_denoised: bool = None):
-        """ Sample from p_theta(x{t-1} | xt). """
-        assert self.masked_image is not None, f'Please call `set_mask_and_image()` before sampling.'
-        assert self.mask is not None, f'Please call `set_mask_and_image()` before sampling.'
-
-        out = self.p_mean_variance(model_output, xt, t, t_prev, var_type, clip_denoised)
-        if t == 0:
-            sample = out['mean']
-        else:
-            sample = out['mean'] + torch.exp(0.5 * out['logvar']) * torch.randn_like(xt)
-
-        # Apply mask guidance
-        if t == 0:
-            noisy_known = self.masked_image
-        else:
-            noisy_known = self.q_sample(
-                x0=self.masked_image,
-                t=torch.full((xt.shape[0], ), t_prev, device=self.device),
-            )
-        sample = sample * (1. - self.mask) + noisy_known * self.mask
-
-        return {'sample': sample, 'pred_x0': out['pred_x0']}
-
-    def ddim_p_sample(self, model_output: Tensor, xt: Tensor, t: int, t_prev: int,
-                      clip_denoised: bool = None, eta: float = 0.0):
-        raise NotImplementedError(f'Mask guidance does not support ddim sampling.')
 
     def resample_loop(self, model: nn.Module, init_noise: Tensor,
                       var_type: str = None, clip_denoised: bool = None,
@@ -105,8 +89,9 @@ class MaskGuided(Guided):
                  var_type: str = None, clip_denoised: bool = None,
                  resample_r: int = 10, resample_j: int = 10, **model_kwargs):
         sample = None
-        for out in self.resample_loop(model, init_noise, var_type, clip_denoised,
-                                      resample_r, resample_j, **model_kwargs):
+        for out in self.resample_loop(
+                model, init_noise, var_type, clip_denoised, resample_r, resample_j, **model_kwargs,
+        ):
             sample = out['sample']
         return sample
 

@@ -36,8 +36,7 @@ class CLIPGuided(Guided):
         self.text = text
 
     @torch.enable_grad()
-    def cond_fn_mean(self, t: int, xt: Tensor, pred_x0: Tensor, pred_eps: Tensor,
-                     mean: Tensor, logvar: Tensor) -> Tensor:
+    def cond_fn_mean(self, t: int, xt: Tensor, pred_x0: Tensor, var: Tensor, **kwargs) -> Tensor:
         assert self.text is not None, f'Please call `set_text()` before sampling.'
         images = image_norm_to_float(pred_x0)
         processed = self.clip_processor(text=self.text, images=images, return_tensors="pt", padding=True)
@@ -47,4 +46,4 @@ class CLIPGuided(Guided):
         similarities = torch.matmul(out['image_embeds'], out['text_embeds'].t()).squeeze(dim=1)
         grad = torch.autograd.grad(outputs=similarities.sum(), inputs=processed['pixel_values'])[0]
         grad = T.Resize(xt.shape[-2:], antialias=True)(grad)
-        return self.guidance_weight * ((1. / self.alphas_cumprod[t]) ** 0.5) * torch.exp(logvar) * grad
+        return self.guidance_weight * ((1. / self.alphas_cumprod[t]) ** 0.5) * var * grad

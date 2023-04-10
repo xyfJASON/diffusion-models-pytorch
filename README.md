@@ -12,6 +12,7 @@ My implementations of Diffusion Models with PyTorch.
 - [ ] Guidance
   - [x] CLIP Guidance
   - [x] Mask Guidance
+  - [x] ILVR
 
 
 <br/>
@@ -69,6 +70,16 @@ For instructions on training / sampling / evaluation and more quantitative & qua
 
 <p align="center">
   <img src="./assets/mask-guidance-imagenet.png" width=80% />
+</p>
+
+<br/>
+
+
+
+## ILVR
+
+<p align="center">
+  <img src="./assets/ilvr-celebahq.png" width=80% />
 </p>
 
 <br/>
