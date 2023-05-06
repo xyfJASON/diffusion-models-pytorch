@@ -79,8 +79,9 @@ For instructions on training / sampling / evaluation and more quantitative & qua
 ## ILVR
 
 <p align="center">
-  <img src="./assets/ilvr-celebahq.png" width=80% />
+  <img src="./assets/ilvr-celebahq.png" width=55% />
 </p>
+
 
 <br/>
 

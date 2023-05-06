@@ -11,9 +11,8 @@ from torchvision.utils import save_image
 import accelerate
 
 import diffusions
-from tools import build_model
 from utils.logger import get_logger
-from utils.misc import image_norm_to_float
+from utils.misc import image_norm_to_float, instantiate_from_config
 
 
 def get_parser():
@@ -132,21 +131,16 @@ if __name__ == '__main__':
     accelerator.wait_for_everyone()
 
     # BUILD DIFFUSER
-    diffuser = diffusions.guided_free.GuidedFree(
-        total_steps=cfg.diffusion.total_steps,
-        beta_schedule=cfg.diffusion.beta_schedule,
-        beta_start=cfg.diffusion.beta_start,
-        beta_end=cfg.diffusion.beta_end,
-        objective=cfg.diffusion.objective,
-        var_type=cfg.diffusion.var_type,
-        skip_type=args.skip_type,
-        skip_steps=args.skip_steps,
-        guidance_scale=args.guidance_scale,
-        device=device,
-    )
+    cfg.diffusion.params.update({
+        'skip_type': args.skip_type,
+        'skip_steps': args.skip_steps,
+        'guidance_scale': args.guidance_scale,
+        'device': device,
+    })
+    diffuser = diffusions.guided_free.GuidedFree(**cfg.diffusion.params)
 
     # BUILD MODEL
-    model = build_model(cfg, with_ema=False)
+    model = instantiate_from_config(cfg.model)
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
     model.load_state_dict(ckpt['ema']['shadow'] if args.load_ema else ckpt['model'])

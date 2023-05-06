@@ -11,12 +11,11 @@ from torchvision.utils import save_image
 
 import accelerate
 
-import diffusions
+from models import EMA
 from metrics import AverageMeter
-from tools import build_model, build_optimizer
 from utils.logger import StatusTracker, get_logger
 from utils.data import get_dataset, get_data_generator
-from utils.misc import get_time_str, create_exp_dir, check_freq, find_resume_checkpoint
+from utils.misc import get_time_str, create_exp_dir, check_freq, find_resume_checkpoint, instantiate_from_config
 
 
 def get_parser():
@@ -38,7 +37,8 @@ def get_parser():
 
 def train(args, cfg):
     # INITIALIZE ACCELERATOR
-    accelerator = accelerate.Accelerator()
+    ddp_kwargs = accelerate.DistributedDataParallelKwargs(find_unused_parameters=True)
+    accelerator = accelerate.Accelerator(kwargs_handlers=[ddp_kwargs])
     device = accelerator.device
     print(f'Process {accelerator.process_index} using device: {device}')
     accelerator.wait_for_everyone()
@@ -71,6 +71,7 @@ def train(args, cfg):
     logger.info(f'Number of processes: {accelerator.num_processes}')
     logger.info(f'Distributed type: {accelerator.distributed_type}')
     logger.info(f'Mixed precision: {accelerator.mixed_precision}')
+    logger.info('=' * 30)
 
     accelerator.wait_for_everyone()
 
@@ -96,22 +97,17 @@ def train(args, cfg):
     logger.info(f'Size of training set: {len(train_set)}')
     logger.info(f'Batch size per process: {batch_size_per_process}')
     logger.info(f'Total batch size: {cfg.train.batch_size}')
+    logger.info('=' * 30)
 
     # BUILD DIFFUSER
-    diffuser = diffusions.guided_free.GuidedFree(
-        total_steps=cfg.diffusion.total_steps,
-        beta_schedule=cfg.diffusion.beta_schedule,
-        beta_start=cfg.diffusion.beta_start,
-        beta_end=cfg.diffusion.beta_end,
-        objective=cfg.diffusion.objective,
-        var_type=cfg.diffusion.var_type,
-        guidance_scale=1.0,
-        device=device,
-    )
+    cfg.diffusion.params.update({'device': device})
+    diffuser = instantiate_from_config(cfg.diffusion)
 
     # BUILD MODEL AND OPTIMIZERS
-    model, ema = build_model(cfg, with_ema=True)
-    optimizer = build_optimizer(model.parameters(), cfg)
+    model = instantiate_from_config(cfg.model)
+    ema = EMA(model=model, decay=cfg.model.ema_decay, gradual=cfg.model.get('ema_gradual', True))
+    cfg.train.optim.params.update({'params': model.parameters()})
+    optimizer = instantiate_from_config(cfg.train.optim)
     step = 0
 
     def load_ckpt(ckpt_path: str):
@@ -166,7 +162,7 @@ def train(args, cfg):
             y = batchy[i:i+micro_batch].long()
             if torch.rand(1) < cfg.train.p_uncond:
                 y = None
-            t = torch.randint(cfg.diffusion.total_steps, (X.shape[0], ), device=device).long()
+            t = torch.randint(cfg.diffusion.params.total_steps, (X.shape[0], ), device=device).long()
             loss_scale = X.shape[0] / batch_size
             no_sync = (i + micro_batch) < batch_size
             cm = accelerator.no_sync(model) if no_sync else nullcontext()
@@ -201,8 +197,10 @@ def train(args, cfg):
         batch_size = mb * accelerator.num_processes
         for c in range(min(10, cfg.data.num_classes)):
             samples_c = []
-            for bs in tqdm.tqdm(amortize(cfg.train.n_samples_each_class, batch_size), desc='Sampling',
-                                leave=False, disable=not accelerator.is_main_process):
+            for bs in tqdm.tqdm(
+                    amortize(cfg.train.n_samples_each_class, batch_size), desc='Sampling',
+                    leave=False, disable=not accelerator.is_main_process,
+            ):
                 init_noise = torch.randn((mb, *img_shape), device=device)
                 labels = torch.full((mb, ), fill_value=c, device=device)
                 samples = diffuser.ddim_sample(

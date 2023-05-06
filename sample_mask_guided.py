@@ -12,11 +12,10 @@ import accelerate
 
 import models
 import diffusions
-from tools import build_model
 from utils.data import get_dataset
 from utils.logger import get_logger
 from utils.mask import DatasetWithMask
-from utils.misc import image_norm_to_float
+from utils.misc import image_norm_to_float, instantiate_from_config
 
 
 def get_parser():
@@ -148,21 +147,16 @@ if __name__ == '__main__':
     accelerator.wait_for_everyone()
 
     # BUILD DIFFUSER
-    diffuser = diffusions.MaskGuided(
-        total_steps=cfg.diffusion.total_steps,
-        beta_schedule=cfg.diffusion.beta_schedule,
-        beta_start=cfg.diffusion.beta_start,
-        beta_end=cfg.diffusion.beta_end,
-        objective=cfg.diffusion.objective,
-        var_type=args.var_type if args.var_type is not None else cfg.diffusion.var_type,
-        skip_type=args.skip_type if args.skip_type is not None else None,
-        skip_steps=args.skip_steps,
-        device=device,
-    )
+    cfg.diffusion.params.update({
+        'var_type': args.var_type or cfg.diffusion.params.var_type,
+        'skip_type': args.skip_type,
+        'skip_steps': args.skip_steps,
+        'device': device,
+    })
+    diffuser = diffusions.MaskGuided(**cfg.diffusion.params)
 
     # BUILD MODEL
-    model = build_model(cfg, with_ema=False)
-
+    model = instantiate_from_config(cfg.model)
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
     if isinstance(model, (models.UNet, models.UNetCategorialAdaGN)):
@@ -170,7 +164,6 @@ if __name__ == '__main__':
     else:
         model.load_state_dict(ckpt)
     logger.info(f'Successfully load model from {args.weights}')
-
     # PREPARE FOR DISTRIBUTED MODE AND MIXED PRECISION
     model = accelerator.prepare(model)
     model.eval()

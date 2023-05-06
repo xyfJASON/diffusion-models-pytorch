@@ -3,6 +3,8 @@ import sys
 import torch
 import shutil
 import datetime
+import importlib
+from yacs.config import CfgNode as CN
 
 
 def check_freq(freq: int, step: int):
@@ -51,6 +53,12 @@ def find_resume_checkpoint(exp_dir: str, resume: str):
         raise ValueError(f'resume option {resume} is invalid')
     assert os.path.isdir(ckpt_path), f'{ckpt_path} is not a directory'
     return ckpt_path
+
+
+def instantiate_from_config(cfg: CN):
+    module, cls = cfg['target'].rsplit('.', 1)
+    cls = getattr(importlib.import_module(module, package=None), cls)
+    return cls(**cfg.get('params', dict()))
 
 
 def create_exp_dir(

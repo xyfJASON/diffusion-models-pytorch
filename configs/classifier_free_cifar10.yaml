@@ -14,27 +14,30 @@ dataloader:
   micro_batch: 0
 
 model:
-  type: unet_categorial_adagn
-  in_channels: 3
-  out_channels: 3
-  dim: 128
-  dim_mults: [1, 2, 2, 2]
-  use_attn: [false, true, true, false]
-  num_res_blocks: 2
-  num_classes: 10
-  attn_head_dims: 64
-  resblock_updown: true
-  dropout: 0.1
+  target: models.unet_categorial_adagn.UNetCategorialAdaGN
+  params:
+    in_channels: 3
+    out_channels: 3
+    dim: 128
+    dim_mults: [1, 2, 2, 2]
+    use_attn: [false, true, true, false]
+    num_res_blocks: 2
+    num_classes: 10
+    attn_head_dims: 64
+    resblock_updown: true
+    dropout: 0.1
   ema_decay: 0.9999
   ema_gradual: true
 
 diffusion:
-  total_steps: 1000
-  beta_schedule: cosine
-  beta_start: 0.0001
-  beta_end: 0.02
-  objective: pred_eps
-  var_type: fixed_large
+  target: diffusions.guided_free.GuidedFree
+  params:
+    total_steps: 1000
+    beta_schedule: cosine
+    beta_start: 0.0001
+    beta_end: 0.02
+    objective: pred_eps
+    var_type: fixed_large
 
 train:
   n_steps: 800000
@@ -49,5 +52,6 @@ train:
   p_uncond: 0.2
 
   optim:
-    type: AdamW
-    lr: 0.0002
+    target: torch.optim.AdamW
+    params:
+      lr: 0.0002

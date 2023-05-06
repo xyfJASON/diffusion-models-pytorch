@@ -14,25 +14,28 @@ dataloader:
   micro_batch: 0
 
 model:
-  type: unet
-  in_channels: 3
-  out_channels: 3
-  dim: 128
-  dim_mults: [1, 2, 2, 2]
-  use_attn: [false, true, false, false]
-  num_res_blocks: 2
-  n_heads: 1
-  dropout: 0.1
+  target: models.unet.UNet
+  params:
+    in_channels: 3
+    out_channels: 3
+    dim: 128
+    dim_mults: [1, 2, 2, 2]
+    use_attn: [false, true, false, false]
+    num_res_blocks: 2
+    n_heads: 1
+    dropout: 0.1
   ema_decay: 0.9999
   ema_gradual: true
 
 diffusion:
-  total_steps: 1000
-  beta_schedule: linear
-  beta_start: 0.0001
-  beta_end: 0.02
-  objective: pred_eps
-  var_type: fixed_large
+  target: diffusions.ddpm.DDPM
+  params:
+    total_steps: 1000
+    beta_schedule: linear
+    beta_start: 0.0001
+    beta_end: 0.02
+    objective: pred_eps
+    var_type: fixed_large
 
 train:
   n_steps: 800000
@@ -45,5 +48,6 @@ train:
   n_samples: 64
 
   optim:
-    type: Adam
-    lr: 0.0002
+    target: torch.optim.Adam
+    params:
+      lr: 0.0002
