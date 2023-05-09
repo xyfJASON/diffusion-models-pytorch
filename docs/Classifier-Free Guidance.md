@@ -54,7 +54,7 @@ accelerate-launch sample_classifier_free.py -c CONFIG \
 
 ## Evaluation
 
-Same as DDPM. Please refer to [DDPM doc](./DDPM.md).
+Sample 10K-50K images following the previous section and evaluate image quality with tools like [torch-fidelity](https://github.com/toshas/torch-fidelity), [pytorch-fid](https://github.com/mseitzer/pytorch-fid), [clean-fid](https://github.com/GaParmar/clean-fid), etc.
 
 
 
@@ -62,34 +62,12 @@ Same as DDPM. Please refer to [DDPM doc](./DDPM.md).
 
 **FID and IS on CIFAR-10 32x32**:
 
-<table align="center" width=100%>
-  <tr>
-    <th align="center">guidance scale</th>
-    <th align="center">FID ↓</th>
-    <th align="center">IS ↑</th>
-  </tr>
-  <tr>
-    <td align="center">0 (unconditional)</td>
-    <td align="center">6.1983</td>
-    <td align="center">8.9323 (0.1542)</td>
-  </tr>
-  <tr>
-    <td align="center">1 (non-guided conditional)</td>
-    <td align="center">4.6546</td>
-    <td align="center">9.2524 (0.1606)</td>
-  </tr>
-  <tr>
-    <td align="center">3 (unconditional)</td>
-    <td align="center">9.9375</td>
-    <td align="center">9.5522 (0.1013)</td>
-  </tr>
-  <tr>
-    <td align="center">5 (unconditional)</td>
-    <td align="center">13.3187</td>
-    <td align="center">9.4688 (0.1588)</td>
-  </tr>
-</table>
-
+|       guidance scale       |  FID ↓   |      IS ↑       |
+| :------------------------: | :------: | :-------------: |
+|     0 (unconditional)      |  6.2904  | 8.9851 ± 0.0825 |
+| 1 (non-guided conditional) |  4.6630  | 9.1763 ± 0.1201 |
+|   3 (guided conditional)   | 10.2304  | 9.6252 ± 0.0977 |
+|   5 (guided conditional)   | 16.23021 | 9.3210 ± 0.0744 |
 
 - The images are sampled using DDIM with 50 steps.
 - All the metrics are evaluated on 50K samples.
@@ -97,12 +75,10 @@ Same as DDPM. Please refer to [DDPM doc](./DDPM.md).
 
 
 
-**Samples with different guidance scale**:
+**Samples with different guidance scales**:
 
 <p align="center">
   <img src="../assets/classifier-free-cifar10.png" />
 </p>
-
-
 From left to right: $s=0$ (unconditional), $s=1.0$ (non-guided conditional), $s=3.0$, $s=5.0$. Each row corresponds to a class.
 

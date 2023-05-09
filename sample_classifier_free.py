@@ -98,7 +98,7 @@ def sample():
             if accelerator.is_main_process:
                 for x in samples:
                     x = image_norm_to_float(x).cpu()
-                    save_image(x, os.path.join(args.save_dir, f'class{c}-{idx}.png'), nrow=1)
+                    save_image(x, os.path.join(args.save_dir, f'class{c}', f'{idx}.png'), nrow=1)
                     idx += 1
 
 
@@ -154,6 +154,8 @@ if __name__ == '__main__':
     # START SAMPLING
     logger.info('Start sampling...')
     os.makedirs(args.save_dir, exist_ok=True)
+    for i in range(cfg.data.num_classes):
+        os.makedirs(os.path.join(args.save_dir, f'class{i}'), exist_ok=True)
     logger.info(f'Samples will be saved to {args.save_dir}')
     sample()
     logger.info(f'Sampled images are saved to {args.save_dir}')
