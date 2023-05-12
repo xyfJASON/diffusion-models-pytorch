@@ -216,7 +216,7 @@ class Model(nn.Module):
                                        padding=1)
 
         curr_res = resolution
-        in_ch_mult = (1,)+ch_mult
+        in_ch_mult = (1,)+tuple(ch_mult)
         self.down = nn.ModuleList()
         for i_level in range(self.num_resolutions):
             block = nn.ModuleList()

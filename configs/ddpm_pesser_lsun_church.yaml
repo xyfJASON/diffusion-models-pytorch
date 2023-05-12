@@ -1,8 +1,8 @@
 seed: 2022
 
 data:
-  name: CelebA-HQ
-  dataroot: /data/CelebA-HQ/
+  name: LSUN-Church
+  dataroot: ~
   img_size: 256
   img_channels: 3
 

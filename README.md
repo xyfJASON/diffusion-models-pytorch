@@ -8,12 +8,17 @@ My implementations of Diffusion Models with PyTorch.
 
 - [x] DDPM
 - [x] DDIM
+- [x] Guidance
 - [x] Classifier-Free Guidance
-- [ ] Guidance
-  - [x] CLIP Guidance
-  - [x] Mask Guidance
-  - [x] ILVR
 
+- Applications
+
+  - [x] CLIP Guidance
+
+  - [x] Mask Guidance
+
+  - [x] ILVR
+  - [x] SDEdit
 
 <br/>
 
@@ -66,7 +71,7 @@ For instructions on training / sampling / evaluation and more quantitative & qua
 
 
 
-## Mask Guidance
+## Mask Guidance \[<a href="https://arxiv.org/abs/2201.09865">paper</a>\] \[<a href="https://github.com/andreas128/RePaint">official repo</a>\]
 
 <p align="center">
   <img src="./assets/mask-guidance-imagenet.png" width=80% />
@@ -76,12 +81,20 @@ For instructions on training / sampling / evaluation and more quantitative & qua
 
 
 
-## ILVR
+## ILVR \[<a href="https://arxiv.org/abs/2108.02938">paper</a>\] \[<a href="https://github.com/jychoi118/ilvr_adm">official repo</a>\]
 
 <p align="center">
   <img src="./assets/ilvr-celebahq.png" width=55% />
 </p>
+<br/>
 
+
+
+## SDEdit \[<a href="https://arxiv.org/abs/2108.01073">paper</a>\] \[<a href="https://sde-image-editing.github.io/">website</a>\] \[<a href="https://github.com/ermongroup/SDEdit">official repo</a>\]
+
+<p align="center">
+  <img src="./assets/sdedit.png" width=55% />
+</p>
 
 <br/>
 
