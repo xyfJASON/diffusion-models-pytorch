@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from diffusions.schedule import get_beta_schedule, get_skip_seq
 
 
-class GuidedFree:
+class ClassifierFree:
     """ Diffusion Models with Classifier-Free Guidance.
 
     The idea was first proposed by classifier-free guidance paper, but can also be used for conditions besides

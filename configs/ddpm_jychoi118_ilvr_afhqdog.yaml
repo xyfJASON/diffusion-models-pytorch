@@ -1,0 +1,46 @@
+seed: 2022
+
+data:
+  name: AFHQ-Dog
+  dataroot: ~
+  img_size: 256
+  img_channels: 3
+
+dataloader:
+  num_workers: 4
+  pin_memory: true
+  prefetch_factor: 2
+  micro_batch: 0
+
+model:
+  target: models.openai.guided_diffusion.unet.UNetModel
+  params:
+    image_size: 256
+    in_channels: 3
+    model_channels: 128
+    out_channels: 6
+    num_res_blocks: 1
+    attention_resolutions: [16]
+    dropout: 0.0
+    channel_mult: [1, 1, 2, 2, 4, 4]
+    conv_resample: true
+    dims: 2
+    num_classes: ~
+    use_checkpoint: false
+    use_fp16: false
+    num_heads: 4
+    num_head_channels: 64
+    num_heads_upsample: -1
+    use_scale_shift_norm: true
+    resblock_updown: true
+    use_new_attention_order: false
+
+diffusion:
+  target: diffusions.ddpm.DDPM
+  params:
+    total_steps: 1000
+    beta_schedule: linear
+    beta_start: 0.0001
+    beta_end: 0.02
+    objective: pred_eps
+    var_type: learned_range

@@ -49,8 +49,8 @@ def get_parser():
         help='Number of timesteps for skip sampling',
     )
     parser.add_argument(
-        '--noise_steps', type=int, required=True,
-        help='Number of timesteps to add noise',
+        '--edit_steps', type=int, required=True,
+        help='Number of timesteps to add noise and denoise',
     )
     parser.add_argument(
         '--input_dir', type=str, required=True,
@@ -86,8 +86,8 @@ def sample():
     logger.info(f'Found {len(dataset)} images in {args.input_dir}')
 
     idx = 0
-    assert 0 <= args.noise_steps < len(diffuser.skip_seq)
-    time_seq = diffuser.skip_seq[:args.noise_steps].tolist()
+    assert 0 <= args.edit_steps < len(diffuser.skip_seq)
+    time_seq = diffuser.skip_seq[:args.edit_steps].tolist()
     time_seq_prev = [-1] + time_seq[:-1]
     for img in tqdm.tqdm(dataloader, desc='Sampling', disable=not accelerator.is_main_process):
         img = img.float()

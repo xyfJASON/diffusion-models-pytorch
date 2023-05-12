@@ -137,7 +137,7 @@ if __name__ == '__main__':
         'guidance_scale': args.guidance_scale,
         'device': device,
     })
-    diffuser = diffusions.guided_free.GuidedFree(**cfg.diffusion.params)
+    diffuser = diffusions.classifier_free.ClassifierFree(**cfg.diffusion.params)
 
     # BUILD MODEL
     model = instantiate_from_config(cfg.model)

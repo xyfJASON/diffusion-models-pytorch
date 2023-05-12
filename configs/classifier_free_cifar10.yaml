@@ -30,7 +30,7 @@ model:
   ema_gradual: true
 
 diffusion:
-  target: diffusions.guided_free.GuidedFree
+  target: diffusions.classifier_free.ClassifierFree
   params:
     total_steps: 1000
     beta_schedule: cosine
