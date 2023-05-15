@@ -20,19 +20,20 @@ Directly applying mask guidance may lead to inconsistent semantic between masked
 ## Sampling
 
 ```shell
-accelerate-launch sample_mask_guided.py -c CONFIG \
-                                        [--seed SEED] \
-                                        --weights WEIGHTS \
-                                        [--load_ema LOAD_EMA] \
-                                        [--var_type VAR_TYPE] \
-                                        [--skip_type SKIP_TYPE] \
-                                        [--skip_steps SKIP_STEPS] \
-                                        [--resample] \
-                                        [--resample_r RESAMPLE_R] \
-                                        [--resample_j RESAMPLE_J] \
-                                        --n_samples N_SAMPLES \
-                                        --save_dir SAVE_DIR \
-                                        [--micro_batch MICRO_BATCH]
+accelerate-launch sample_mask_guided.py  -c CONFIG \
+                                         --weights WEIGHTS \
+                                         --n_samples N_SAMPLES \
+                                         --input_dir INPUT_DIR \
+                                         --save_dir SAVE_DIR \
+                                         [--seed SEED] \
+                                         [--load_ema LOAD_EMA] \
+                                         [--var_type VAR_TYPE] \
+                                         [--skip_type SKIP_TYPE] \
+                                         [--skip_steps SKIP_STEPS] \
+                                         [--resample] \
+                                         [--resample_r RESAMPLE_R] \
+                                         [--resample_j RESAMPLE_J] \
+                                         [--micro_batch MICRO_BATCH]
 ```
 
 - This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
@@ -40,7 +41,7 @@ accelerate-launch sample_mask_guided.py -c CONFIG \
   - `--resample_r RESAMPLE_R`: number of resampling.
   - `--resample_j RESAMPLE_J`: jump lengths.
 
-- Use `--skip_type SKIP_TYPE` and `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps.
+- Use `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps.
 
 
 

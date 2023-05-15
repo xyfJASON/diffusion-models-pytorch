@@ -14,21 +14,22 @@ DDIM shares the same training process with DDPM. Please refer to [DDPM doc](./DD
 
 ```shell
 accelerate-launch sample_ddim.py -c CONFIG \
-                                 [--seed SEED] \
                                  --weights WEIGHTS \
+                                 --n_samples N_SAMPLES \
+                                 --save_dir SAVE_DIR \
+                                 [--seed SEED] \
                                  [--load_ema LOAD_EMA] \
                                  [--ddim_eta DDIM_ETA] \
                                  [--skip_type SKIP_TYPE] \
                                  [--skip_steps SKIP_STEPS] \
-                                 --n_samples N_SAMPLES \
-                                 --save_dir SAVE_DIR \
                                  [--micro_batch MICRO_BATCH] \
                                  [--mode {sample,interpolate,reconstruction}] \
-                                 [--n_interpolate N_INTERPOLATE]
+                                 [--n_interpolate N_INTERPOLATE] \
+                                 [--input_dir INPUT_DIR]
 ```
 
 - This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
-- Use `--skip_type SKIP_TYPE` and `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps.
+- Use `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps.
 - Choose a sampling mode by `--mode MODE`, the options are:
   - `sample` (default): randomly sample images
   - `interpolate`: sample two random images and interpolate between them. Use `--n_interpolate` to specify the number of images in between.
@@ -39,7 +40,7 @@ accelerate-launch sample_ddim.py -c CONFIG \
 
 ## Evaluation
 
-Same as DDPM. Please refer to [DDPM doc](./DDPM.md).
+Sample 10K-50K images following the previous section and evaluate image quality with tools like [torch-fidelity](https://github.com/toshas/torch-fidelity), [pytorch-fid](https://github.com/mseitzer/pytorch-fid), [clean-fid](https://github.com/GaParmar/clean-fid), etc.
 
 
 

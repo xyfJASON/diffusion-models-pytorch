@@ -5,14 +5,15 @@ from functools import partial
 from yacs.config import CfgNode as CN
 
 import torch
-from torch.utils.data import DataLoader
+import torchvision.transforms as T
 from torchvision.utils import save_image
+from torch.utils.data import DataLoader, Subset
 
 import accelerate
 
 import models
 import diffusions
-from utils.data import get_dataset
+from datasets import ImageDir
 from utils.logger import get_logger
 from utils.mask import DatasetWithMask
 from utils.misc import image_norm_to_float, instantiate_from_config
@@ -42,7 +43,7 @@ def get_parser():
         help='Type of variance of the reverse process',
     )
     parser.add_argument(
-        '--skip_type', type=str, default=None,
+        '--skip_type', type=str, default='uniform',
         help='Type of skip sampling',
     )
     parser.add_argument(
@@ -66,6 +67,10 @@ def get_parser():
         help='Number of samples',
     )
     parser.add_argument(
+        '--input_dir', type=str, required=True,
+        help='Path to the directory containing input images',
+    )
+    parser.add_argument(
         '--save_dir', type=str, required=True,
         help='Path to directory saving samples',
     )
@@ -77,33 +82,26 @@ def get_parser():
 
 
 @torch.no_grad()
-def sample():
-    test_set = get_dataset(
-        name=cfg.data.name,
-        dataroot=cfg.data.dataroot,
-        img_size=cfg.data.img_size,
-        split='test',
-        subset_ids=range(args.n_samples),
-    )
-    test_set = DatasetWithMask(
-        dataset=test_set,
+def sample(dataset):
+    dataset = DatasetWithMask(
+        dataset=dataset,
         mask_type='brush',
     )
-    test_loader = DataLoader(
-        dataset=test_set,
+    dataloader = DataLoader(
+        dataset=dataset,
         batch_size=args.micro_batch,
         num_workers=cfg.dataloader.num_workers,
         pin_memory=cfg.dataloader.pin_memory,
         prefetch_factor=cfg.dataloader.prefetch_factor,
     )
-    test_loader = accelerator.prepare(test_loader)  # type: ignore
+    dataloader = accelerator.prepare(dataloader)  # type: ignore
 
     sample_fn = diffuser.sample
     if args.resample:
         sample_fn = partial(diffuser.resample, resample_r=args.resample_r, resample_j=args.resample_j)
 
     idx = 0
-    for X, mask in tqdm.tqdm(test_loader, desc='Sampling', disable=not accelerator.is_main_process):
+    for X, mask in tqdm.tqdm(dataloader, desc='Sampling', disable=not accelerator.is_main_process):
         init_noise = torch.randn_like(X)
         masked_image = X * mask
         diffuser.set_mask_and_image(masked_image, mask.float())
@@ -149,7 +147,7 @@ if __name__ == '__main__':
     # BUILD DIFFUSER
     cfg.diffusion.params.update({
         'var_type': args.var_type or cfg.diffusion.params.var_type,
-        'skip_type': args.skip_type,
+        'skip_type': None if args.skip_steps is None else args.skip_type,
         'skip_steps': args.skip_steps,
         'device': device,
     })
@@ -174,6 +172,15 @@ if __name__ == '__main__':
     logger.info('Start sampling...')
     os.makedirs(args.save_dir, exist_ok=True)
     logger.info(f'Samples will be saved to {args.save_dir}')
-    sample()
+    transforms = T.Compose([
+        T.Resize(cfg.data.img_size),
+        T.CenterCrop(cfg.data.img_size),
+        T.ToTensor(),
+        T.Normalize([0.5] * 3, [0.5] * 3),
+    ])
+    dset = ImageDir(root=args.input_dir, split='', transform=transforms)
+    if args.n_samples < len(dset):
+        dset = Subset(dataset=dset, indices=torch.arange(args.n_samples))
+    sample(dataset=dset)
     logger.info(f'Sampled images are saved to {args.save_dir}')
     logger.info('End of sampling')

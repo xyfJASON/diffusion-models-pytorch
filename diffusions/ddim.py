@@ -15,6 +15,7 @@ class DDIM(DDPM):
             betas: Tensor = None,
             objective: str = 'pred_eps',
 
+            var_type: str = 'fixed_large',
             clip_denoised: bool = True,
             skip_type: str = None,
             skip_steps: int = 100,
@@ -30,7 +31,7 @@ class DDIM(DDPM):
             beta_end=beta_end,
             betas=betas,
             objective=objective,
-            var_type='fixed_small',
+            var_type=var_type,
             clip_denoised=clip_denoised,
             skip_type=skip_type,
             skip_steps=skip_steps,
