@@ -1,5 +1,3 @@
-from typing import Any
-
 import torch
 from torch import Tensor
 import torch.nn as nn
@@ -34,6 +32,7 @@ class ClassifierFree:
             skip_seq: Tensor = None,
             guidance_scale: float = 1.,
 
+            cond_kwarg: str = 'y',
             device: torch.device = 'cpu',
     ):
         """ Diffusion Models with Classifier-Free Guidance.
@@ -71,6 +70,8 @@ class ClassifierFree:
                              - `s>1`: guided conditional generation.
                             This argument doesn't affect training and can be overridden by sampling functions.
 
+            cond_kwarg: Name of the keyword argument representing condition in model. Default to be 'cond', but some model
+
         """
         assert objective in ['pred_eps', 'pred_x0']
         assert var_type in ['fixed_small', 'fixed_large']
@@ -79,6 +80,7 @@ class ClassifierFree:
         self.var_type = var_type
         self.clip_denoised = clip_denoised
         self.guidance_scale = guidance_scale
+        self.cond_kwarg = cond_kwarg
         self.device = device
 
         # Define betas, alphas and related terms
@@ -113,15 +115,16 @@ class ClassifierFree:
             skip_steps=skip_steps,
         ).to(self.device)
 
-    def loss_func(self, model: nn.Module, x0: Tensor, t: Tensor, cond: Any = None, eps: Tensor = None, **model_kwargs):
+    def loss_func(self, model: nn.Module, x0: Tensor, t: Tensor, eps: Tensor = None, **model_kwargs):
+        assert self.cond_kwarg in model_kwargs.keys(), f'Missing the condition key: {self.cond_kwarg}'
         if eps is None:
             eps = torch.randn_like(x0)
         xt = self.q_sample(x0, t, eps)
         if self.objective == 'pred_eps':
-            pred_eps = model(xt, t, cond, **model_kwargs)
+            pred_eps = model(xt, t, **model_kwargs)
             return F.mse_loss(pred_eps, eps)
         else:
-            pred_x0 = model(xt, t, cond, **model_kwargs)
+            pred_x0 = model(xt, t, **model_kwargs)
             return F.mse_loss(pred_x0, x0)
 
     def q_sample(self, x0: Tensor, t: Tensor, eps: Tensor = None):
@@ -157,8 +160,10 @@ class ClassifierFree:
         sqrt_recipm1_alphas_cumprod_t = (1. / self.alphas_cumprod[t] - 1.) ** 0.5
         return (sqrt_recip_alphas_cumprod_t * xt - x0) / sqrt_recipm1_alphas_cumprod_t
 
-    def p_sample(self, model_output_cond: Tensor, model_output_uncond: Tensor, xt: Tensor, t: int, t_prev: int,
-                 var_type: str = None, clip_denoised: bool = None, guidance_scale: float = None):
+    def p_sample(
+            self, model_output_cond: Tensor, model_output_uncond: Tensor, xt: Tensor, t: int, t_prev: int,
+            var_type: str = None, clip_denoised: bool = None, guidance_scale: float = None,
+    ):
         """ Sample from p_theta(x{t-1} | xt).
 
         Args:
@@ -222,30 +227,40 @@ class ClassifierFree:
 
         return {'sample': sample, 'pred_x0': pred_x0}
 
-    def sample_loop(self, model: nn.Module, init_noise: Tensor, cond: Any = None,
-                    var_type: str = None, clip_denoised: bool = None, guidance_scale: float = None, **model_kwargs):
+    def sample_loop(
+            self, model: nn.Module, init_noise: Tensor, var_type: str = None,
+            clip_denoised: bool = None, guidance_scale: float = None, **model_kwargs,
+    ):
+        assert self.cond_kwarg in model_kwargs.keys(), f'Missing the condition key: {self.cond_kwarg}'
+        uncond_model_kwargs = model_kwargs.copy()
+        uncond_model_kwargs[self.cond_kwarg] = None
+
         img = init_noise
         skip_seq = self.skip_seq.tolist()
         skip_seq_prev = [-1] + self.skip_seq[:-1].tolist()
         for t, t_prev in zip(reversed(skip_seq), reversed(skip_seq_prev)):
             t_batch = torch.full((img.shape[0], ), t, device=self.device, dtype=torch.long)
-            model_output_cond = model(img, t_batch, cond, **model_kwargs)
-            model_output_uncond = model(img, t_batch, None, **model_kwargs)
+            model_output_cond = model(img, t_batch, **model_kwargs)
+            model_output_uncond = model(img, t_batch, **uncond_model_kwargs)
             out = self.p_sample(
                 model_output_cond, model_output_uncond, img, t, t_prev, var_type, clip_denoised, guidance_scale,
             )
             img = out['sample']
             yield out
 
-    def sample(self, model: nn.Module, init_noise: Tensor, cond: Any = None,
-               var_type: str = None, clip_denoised: bool = None, guidance_scale: float = None, **model_kwargs):
+    def sample(
+            self, model: nn.Module, init_noise: Tensor, var_type: str = None,
+            clip_denoised: bool = None, guidance_scale: float = None, **model_kwargs,
+    ):
         sample = None
-        for out in self.sample_loop(model, init_noise, cond, var_type, clip_denoised, guidance_scale, **model_kwargs):
+        for out in self.sample_loop(model, init_noise, var_type, clip_denoised, guidance_scale, **model_kwargs):
             sample = out['sample']
         return sample
 
-    def ddim_p_sample(self, model_output_cond: Tensor, model_output_uncond: Tensor, xt: Tensor, t: int, t_prev: int,
-                      clip_denoised: bool = None, guidance_scale: float = None, eta: float = 0.0):
+    def ddim_p_sample(
+            self, model_output_cond: Tensor, model_output_uncond: Tensor, xt: Tensor, t: int, t_prev: int,
+            clip_denoised: bool = None, guidance_scale: float = None, eta: float = 0.0,
+    ):
         """ Sample from p_theta(x{t-1} | xt) using DDIM, similar to `p_sample` """
         if clip_denoised is None:
             clip_denoised = self.clip_denoised
@@ -285,23 +300,102 @@ class ClassifierFree:
             sample = mean + torch.sqrt(var) * torch.randn_like(xt)
         return {'sample': sample, 'pred_x0': pred_x0}
 
-    def ddim_sample_loop(self, model: nn.Module, init_noise: Tensor, cond: Any = None,
-                         clip_denoised: bool = None, guidance_scale: float = None, eta: float = 0.0, **model_kwargs):
+    def ddim_sample_loop(
+            self, model: nn.Module, init_noise: Tensor, clip_denoised: bool = None,
+            guidance_scale: float = None, eta: float = 0.0, **model_kwargs,
+    ):
+        assert self.cond_kwarg in model_kwargs.keys(), f'Missing the condition key: {self.cond_kwarg}'
+        uncond_model_kwargs = model_kwargs.copy()
+        uncond_model_kwargs[self.cond_kwarg] = None
+
         img = init_noise
         skip_seq = self.skip_seq.tolist()
         skip_seq_prev = [-1] + self.skip_seq[:-1].tolist()
         for t, t_prev in zip(reversed(skip_seq), reversed(skip_seq_prev)):
             t_batch = torch.full((img.shape[0], ), t, device=self.device, dtype=torch.long)
-            model_output_cond = model(img, t_batch, cond, **model_kwargs)
-            model_output_uncond = model(img, t_batch, None, **model_kwargs)
-            out = self.ddim_p_sample(model_output_cond, model_output_uncond, img, t, t_prev,
-                                     clip_denoised, guidance_scale, eta)
+            model_output_cond = model(img, t_batch, **model_kwargs)
+            model_output_uncond = model(img, t_batch, **uncond_model_kwargs)
+            out = self.ddim_p_sample(
+                model_output_cond, model_output_uncond, img, t, t_prev,
+                clip_denoised, guidance_scale, eta,
+            )
             img = out['sample']
             yield out
 
-    def ddim_sample(self, model: nn.Module, init_noise: Tensor, cond: Any = None,
-                    clip_denoised: bool = None, guidance_scale: float = None, eta: float = 0.0, **model_kwargs):
+    def ddim_sample(
+            self, model: nn.Module, init_noise: Tensor, clip_denoised: bool = None,
+            guidance_scale: float = None, eta: float = 0.0, **model_kwargs,
+    ):
         sample = None
-        for out in self.ddim_sample_loop(model, init_noise, cond, clip_denoised, guidance_scale, eta, **model_kwargs):
+        for out in self.ddim_sample_loop(model, init_noise, clip_denoised, guidance_scale, eta, **model_kwargs):
+            sample = out['sample']
+        return sample
+
+    def ddim_p_sample_inversion(
+            self, model_output_cond: Tensor, model_output_uncond: Tensor, xt: Tensor, t: int, t_next: int,
+            clip_denoised: bool = None, guidance_scale: float = None,
+    ):
+        """ Sample x{t+1} from xt, only valid for DDIM (eta=0) """
+        if clip_denoised is None:
+            clip_denoised = self.clip_denoised
+        if guidance_scale is None:
+            guidance_scale = self.guidance_scale
+
+        # Prepare alphas, betas and other parameters
+        alphas_cumprod_t_next = self.alphas_cumprod[t_next] if t_next < self.total_steps else torch.tensor(0.0)
+
+        # Process model's output
+        if self.var_type == 'learned_range':
+            model_output_cond, _ = torch.split(model_output_cond, xt.shape[1], dim=1)
+            model_output_uncond, _ = torch.split(model_output_uncond, xt.shape[1], dim=1)
+
+        # Calculate the predicted x0 and predicted eps
+        if self.objective == 'pred_eps':
+            pred_eps_cond = model_output_cond
+            pred_eps_uncond = model_output_uncond
+        elif self.objective == 'pred_x0':
+            pred_x0_cond = model_output_cond
+            pred_x0_uncond = model_output_uncond
+            pred_eps_cond = self.pred_eps_from_x0(xt, t, pred_x0_cond)
+            pred_eps_uncond = self.pred_eps_from_x0(xt, t, pred_x0_uncond)
+        else:
+            raise ValueError
+        pred_eps = (1 - guidance_scale) * pred_eps_uncond + guidance_scale * pred_eps_cond
+        pred_x0 = self.pred_x0_from_eps(xt, t, pred_eps)
+        if clip_denoised:
+            pred_x0.clamp_(-1., 1.)
+        pred_eps = self.pred_eps_from_x0(xt, t, pred_x0)
+
+        # Calculate x{t+1}
+        sample = (torch.sqrt(alphas_cumprod_t_next) * pred_x0 +
+                  torch.sqrt(1. - alphas_cumprod_t_next) * pred_eps)
+        return {'sample': sample, 'pred_x0': pred_x0}
+
+    def ddim_sample_inversion_loop(
+            self, model: nn.Module, img: Tensor, clip_denoised: bool = None,
+            guidance_scale: float = None, **model_kwargs,
+    ):
+        assert self.cond_kwarg in model_kwargs.keys(), f'Missing the condition key: {self.cond_kwarg}'
+        uncond_model_kwargs = model_kwargs.copy()
+        uncond_model_kwargs[self.cond_kwarg] = None
+
+        skip_seq = self.skip_seq[:-1].tolist()
+        skip_seq_next = self.skip_seq[1:].tolist()
+        for t, t_next in zip(skip_seq, skip_seq_next):
+            t_batch = torch.full((img.shape[0], ), t, device=img.device, dtype=torch.long)
+            model_output_cond = model(img, t_batch, **model_kwargs)
+            model_output_uncond = model(img, t_batch, **uncond_model_kwargs)
+            out = self.ddim_p_sample_inversion(
+                model_output_cond, model_output_uncond, img, t, t_next, clip_denoised, guidance_scale,
+            )
+            img = out['sample']
+            yield out
+
+    def ddim_sample_inversion(
+            self, model: nn.Module, img: Tensor, clip_denoised: bool = None,
+            guidance_scale: float = None, **model_kwargs,
+    ):
+        sample = None
+        for out in self.ddim_sample_inversion_loop(model, img, clip_denoised, guidance_scale, **model_kwargs):
             sample = out['sample']
         return sample

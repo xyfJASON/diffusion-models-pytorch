@@ -167,7 +167,7 @@ def train(args, cfg):
             no_sync = (i + micro_batch) < batch_size
             cm = accelerator.no_sync(model) if no_sync else nullcontext()
             with cm:
-                loss = diffuser.loss_func(model, x0=X, t=t, cond=y)
+                loss = diffuser.loss_func(model, x0=X, t=t, y=y)
                 accelerator.backward(loss * loss_scale)
             loss_meter.update(loss.item(), X.shape[0])
         accelerator.clip_grad_norm_(model.parameters(), max_norm=cfg.train.clip_grad_norm)
@@ -206,7 +206,7 @@ def train(args, cfg):
                 samples = diffuser.ddim_sample(
                     model=unwrapped_model,
                     init_noise=init_noise,
-                    cond=labels,
+                    y=labels,
                 ).clamp(-1, 1)
                 samples = accelerator.gather(samples)[:bs]
                 samples_c.append(samples)

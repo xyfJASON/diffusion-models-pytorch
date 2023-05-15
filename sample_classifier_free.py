@@ -35,7 +35,7 @@ def get_parser():
         help='Whether to load ema weights',
     )
     parser.add_argument(
-        '--skip_type', type=str, default=None,
+        '--skip_type', type=str, default='uniform',
         help='Type of skip sampling',
     )
     parser.add_argument(
@@ -89,11 +89,13 @@ def sample():
     for c in range(cfg.data.num_classes):
         idx = 0
         logger.info(f'Sampling class {c}')
-        for bs in tqdm.tqdm(amortize(args.n_samples_each_class, batch_size), desc='Sampling',
-                            disable=not accelerator.is_main_process):
+        for bs in tqdm.tqdm(
+                amortize(args.n_samples_each_class, batch_size), desc='Sampling',
+                disable=not accelerator.is_main_process,
+        ):
             init_noise = torch.randn((bs, *img_shape), device=device)
             labels = torch.full((bs, ), fill_value=c, device=device)
-            samples = sample_fn(model=model, init_noise=init_noise, cond=labels).clamp(-1, 1)
+            samples = sample_fn(model=model, init_noise=init_noise, y=labels).clamp(-1, 1)
             samples = accelerator.gather(samples)[:bs]
             if accelerator.is_main_process:
                 for x in samples:
@@ -132,7 +134,7 @@ if __name__ == '__main__':
 
     # BUILD DIFFUSER
     cfg.diffusion.params.update({
-        'skip_type': args.skip_type,
+        'skip_type': None if args.skip_steps is None else args.skip_type,
         'skip_steps': args.skip_steps,
         'guidance_scale': args.guidance_scale,
         'device': device,
