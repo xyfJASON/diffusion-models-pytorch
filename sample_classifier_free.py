@@ -10,6 +10,7 @@ from torchvision.utils import save_image
 
 import accelerate
 
+import models
 import diffusions
 from utils.logger import get_logger
 from utils.misc import image_norm_to_float, instantiate_from_config
@@ -44,8 +45,13 @@ def get_parser():
     )
     parser.add_argument(
         '--guidance_scale', type=float, required=True,
-        help='guidance scale. 0 for unconditional generation, '
+        help='Guidance scale. 0 for unconditional generation, '
              '1 for non-guided generation, >1 for guided generation',
+    )
+    parser.add_argument(
+        '--class_ids', type=int, nargs='+', default=None,
+        help='Which class IDs to sample. '
+             'If not provided, will sample all the classes',
     )
     parser.add_argument(
         '--n_samples_each_class', type=int, required=True,
@@ -86,7 +92,14 @@ def sample():
     if args.ddim:
         sample_fn = partial(diffuser.ddim_sample, eta=args.ddim_eta)
 
-    for c in range(cfg.data.num_classes):
+    class_ids = args.class_ids
+    if args.class_ids is None:
+        class_ids = range(cfg.data.num_classes)
+    logger.info(f'Will sample {args.n_samples_each_class} images '
+                f'for each of the following class IDs: {class_ids}')
+
+    for c in class_ids:
+        os.makedirs(os.path.join(args.save_dir, f'class{c}'), exist_ok=True)
         idx = 0
         logger.info(f'Sampling class {c}')
         for bs in tqdm.tqdm(
@@ -145,8 +158,12 @@ if __name__ == '__main__':
     model = instantiate_from_config(cfg.model)
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
-    model.load_state_dict(ckpt['ema']['shadow'] if args.load_ema else ckpt['model'])
+    if isinstance(model, (models.UNet, models.UNetCategorialAdaGN)):
+        model.load_state_dict(ckpt['ema']['shadow'] if args.load_ema else ckpt['model'])
+    else:
+        model.load_state_dict(ckpt)
     logger.info(f'Successfully load model from {args.weights}')
+
     # PREPARE FOR DISTRIBUTED MODE AND MIXED PRECISION
     model = accelerator.prepare(model)
     model.eval()
@@ -156,8 +173,6 @@ if __name__ == '__main__':
     # START SAMPLING
     logger.info('Start sampling...')
     os.makedirs(args.save_dir, exist_ok=True)
-    for i in range(cfg.data.num_classes):
-        os.makedirs(os.path.join(args.save_dir, f'class{i}'), exist_ok=True)
     logger.info(f'Samples will be saved to {args.save_dir}')
     sample()
     logger.info(f'Sampled images are saved to {args.save_dir}')

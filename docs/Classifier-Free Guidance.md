@@ -41,7 +41,7 @@ accelerate-launch sample_classifier_free.py -c CONFIG \
 ```
 
 - This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
-- Use `--skip_type SKIP_TYPE` and `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps. 
+- Use `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps. 
 - Use `--ddim` for DDIM sampling.
 - Specify `--micro_batch MICRO_BATCH` to sample images batch by batch. Set it as large as possible to fully utilize your devices.
 - I use $s$ in [Classifier Guidance paper](https://arxiv.org/abs/2105.05233) as the scale factor (`--guidance_scale`) rather than $w$ in the [Classifier-Free Guidance paper](https://arxiv.org/abs/2207.12598). In fact, we have $s=w+1$, and:
@@ -75,10 +75,40 @@ Sample 10K-50K images following the previous section and evaluate image quality 
 
 
 
-**Samples with different guidance scales**:
+**Samples with different guidance scales on CIFAR-10 32x32**:
 
 <p align="center">
   <img src="../assets/classifier-free-cifar10.png" />
 </p>
 From left to right: $s=0$ (unconditional), $s=1.0$ (non-guided conditional), $s=3.0$, $s=5.0$. Each row corresponds to a class.
 
+
+
+**Samples with different guidance scales on ImageNet 256x256**:
+
+The pretrained models are sourced from [openai/guided-diffusion](https://github.com/openai/guided-diffusion). Note that these models were initially designed for classifier guidance and thus are either conditional-only or unconditional-only. However, to facilitate classifier-free guidance, it would be more convenient if the model can handle both conditional and unconditional cases. To address this, I've defined a new class [UNetCombined](../models/openai/guided_diffusion/unet_combined.py), which combines the conditional-only and unconditional-only models into a single model. Also, we need to combine the pretrained weights for loading, which can be done by the following script:
+
+```python
+import yaml
+import torch
+from models.openai.guided_diffusion.unet_combined import UNetCombined
+
+
+config_path = './configs/openai/guided-diffusion/imagenet_256_cond.yaml'
+weight_cond_path = './weights/openai/guided-diffusion/256x256_diffusion.pt'
+weight_uncond_path = './weights/openai/guided-diffusion/256x256_diffusion_uncond.pt'
+save_path = './weights/openai/guided-diffusion/256x256_diffusion_combined.pt'
+
+with open(config_path, 'r') as f:
+    cfg = yaml.safe_load(f)
+model = UNetCombined(**cfg['model']['params'])
+model.combine_weights(weight_cond_path, weight_uncond_path, save_path)
+```
+
+
+
+<p align="center">
+  <img src="../assets/classifier-free-imagenet.png" />
+</p>
+
+From left to right: $s=1.0$ (non-guided conditional), $s=2.0$, $s=3.0$. Each row corresponds to a class.

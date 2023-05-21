@@ -74,7 +74,7 @@ class ClassifierFree:
 
         """
         assert objective in ['pred_eps', 'pred_x0']
-        assert var_type in ['fixed_small', 'fixed_large']
+        assert var_type in ['fixed_small', 'fixed_large', 'learned_range']
         self.total_steps = total_steps
         self.objective = objective
         self.var_type = var_type
@@ -190,6 +190,11 @@ class ClassifierFree:
         alphas_t = alphas_cumprod_t / alphas_cumprod_t_prev
         betas_t = 1. - alphas_t
 
+        # Process model's output
+        if model_output_cond.shape[1] > xt.shape[1]:
+            model_output_cond, _ = torch.split(model_output_cond, xt.shape[1], dim=1)
+            model_output_uncond, _ = torch.split(model_output_uncond, xt.shape[1], dim=1)
+
         # Calculate the predicted x0 and predicted eps
         if self.objective == 'pred_eps':
             pred_eps_cond = model_output_cond
@@ -215,7 +220,10 @@ class ClassifierFree:
         if t == 0:
             sample = mean
         else:
-            if var_type == 'fixed_small':
+            if var_type in ['fixed_small', 'learned_range']:
+                # Note: Learned variance is not used in classifier-free guidance.
+                #       In the original paper, the authors use a hyperparameter as the interpolate
+                #       factor, but for simplicity, here I directly use `fixed_small`.
                 var = betas_t * (1. - alphas_cumprod_t_prev) / (1. - alphas_cumprod_t)
                 logvar = torch.log(var)
             elif var_type == 'fixed_large':
@@ -270,6 +278,11 @@ class ClassifierFree:
         # Prepare alphas, betas and other parameters
         alphas_cumprod_t = self.alphas_cumprod[t]
         alphas_cumprod_t_prev = self.alphas_cumprod[t_prev] if t_prev >= 0 else torch.tensor(1.0)
+
+        # Process model's output
+        if model_output_cond.shape[1] > xt.shape[1]:
+            model_output_cond, _ = torch.split(model_output_cond, xt.shape[1], dim=1)
+            model_output_uncond, _ = torch.split(model_output_uncond, xt.shape[1], dim=1)
 
         # Calculate the predicted x0 and predicted eps
         if self.objective == 'pred_eps':
@@ -345,7 +358,7 @@ class ClassifierFree:
         alphas_cumprod_t_next = self.alphas_cumprod[t_next] if t_next < self.total_steps else torch.tensor(0.0)
 
         # Process model's output
-        if self.var_type == 'learned_range':
+        if model_output_cond.shape[1] > xt.shape[1]:
             model_output_cond, _ = torch.split(model_output_cond, xt.shape[1], dim=1)
             model_output_uncond, _ = torch.split(model_output_uncond, xt.shape[1], dim=1)
 
