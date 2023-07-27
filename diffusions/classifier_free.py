@@ -1,3 +1,6 @@
+import tqdm
+from typing import Dict
+
 import torch
 from torch import Tensor
 import torch.nn as nn
@@ -237,15 +240,19 @@ class ClassifierFree:
 
     def sample_loop(
             self, model: nn.Module, init_noise: Tensor, var_type: str = None,
-            clip_denoised: bool = None, guidance_scale: float = None, **model_kwargs,
+            clip_denoised: bool = None, guidance_scale: float = None,
+            tqdm_kwargs: Dict = None, **model_kwargs,
     ):
         assert self.cond_kwarg in model_kwargs.keys(), f'Missing the condition key: {self.cond_kwarg}'
+        if tqdm_kwargs is None:
+            tqdm_kwargs = dict()
         uncond_model_kwargs = model_kwargs.copy()
         uncond_model_kwargs[self.cond_kwarg] = None
 
         img = init_noise
         skip_seq = self.skip_seq.tolist()
         skip_seq_prev = [-1] + self.skip_seq[:-1].tolist()
+        pbar = tqdm.tqdm(total=len(skip_seq), **tqdm_kwargs)
         for t, t_prev in zip(reversed(skip_seq), reversed(skip_seq_prev)):
             t_batch = torch.full((img.shape[0], ), t, device=self.device, dtype=torch.long)
             model_output_cond = model(img, t_batch, **model_kwargs)
@@ -254,14 +261,19 @@ class ClassifierFree:
                 model_output_cond, model_output_uncond, img, t, t_prev, var_type, clip_denoised, guidance_scale,
             )
             img = out['sample']
+            pbar.update(1)
             yield out
+        pbar.close()
 
     def sample(
             self, model: nn.Module, init_noise: Tensor, var_type: str = None,
-            clip_denoised: bool = None, guidance_scale: float = None, **model_kwargs,
+            clip_denoised: bool = None, guidance_scale: float = None,
+            tqdm_kwargs: Dict = None, **model_kwargs,
     ):
         sample = None
-        for out in self.sample_loop(model, init_noise, var_type, clip_denoised, guidance_scale, **model_kwargs):
+        for out in self.sample_loop(
+                model, init_noise, var_type, clip_denoised, guidance_scale, tqdm_kwargs, **model_kwargs,
+        ):
             sample = out['sample']
         return sample
 
@@ -314,16 +326,20 @@ class ClassifierFree:
         return {'sample': sample, 'pred_x0': pred_x0}
 
     def ddim_sample_loop(
-            self, model: nn.Module, init_noise: Tensor, clip_denoised: bool = None,
-            guidance_scale: float = None, eta: float = 0.0, **model_kwargs,
+            self, model: nn.Module, init_noise: Tensor,
+            clip_denoised: bool = None, guidance_scale: float = None, eta: float = 0.0,
+            tqdm_kwargs: Dict = None, **model_kwargs,
     ):
         assert self.cond_kwarg in model_kwargs.keys(), f'Missing the condition key: {self.cond_kwarg}'
+        if tqdm_kwargs is None:
+            tqdm_kwargs = dict()
         uncond_model_kwargs = model_kwargs.copy()
         uncond_model_kwargs[self.cond_kwarg] = None
 
         img = init_noise
         skip_seq = self.skip_seq.tolist()
         skip_seq_prev = [-1] + self.skip_seq[:-1].tolist()
+        pbar = tqdm.tqdm(total=len(skip_seq), **tqdm_kwargs)
         for t, t_prev in zip(reversed(skip_seq), reversed(skip_seq_prev)):
             t_batch = torch.full((img.shape[0], ), t, device=self.device, dtype=torch.long)
             model_output_cond = model(img, t_batch, **model_kwargs)
@@ -333,14 +349,19 @@ class ClassifierFree:
                 clip_denoised, guidance_scale, eta,
             )
             img = out['sample']
+            pbar.update(1)
             yield out
+        pbar.close()
 
     def ddim_sample(
-            self, model: nn.Module, init_noise: Tensor, clip_denoised: bool = None,
-            guidance_scale: float = None, eta: float = 0.0, **model_kwargs,
+            self, model: nn.Module, init_noise: Tensor,
+            clip_denoised: bool = None, guidance_scale: float = None, eta: float = 0.0,
+            tqdm_kwargs: Dict = None, **model_kwargs,
     ):
         sample = None
-        for out in self.ddim_sample_loop(model, init_noise, clip_denoised, guidance_scale, eta, **model_kwargs):
+        for out in self.ddim_sample_loop(
+                model, init_noise, clip_denoised, guidance_scale, eta, tqdm_kwargs, **model_kwargs,
+        ):
             sample = out['sample']
         return sample
 
@@ -385,15 +406,19 @@ class ClassifierFree:
         return {'sample': sample, 'pred_x0': pred_x0}
 
     def ddim_sample_inversion_loop(
-            self, model: nn.Module, img: Tensor, clip_denoised: bool = None,
-            guidance_scale: float = None, **model_kwargs,
+            self, model: nn.Module, img: Tensor,
+            clip_denoised: bool = None, guidance_scale: float = None,
+            tqdm_kwargs: Dict = None, **model_kwargs,
     ):
         assert self.cond_kwarg in model_kwargs.keys(), f'Missing the condition key: {self.cond_kwarg}'
+        if tqdm_kwargs is None:
+            tqdm_kwargs = dict()
         uncond_model_kwargs = model_kwargs.copy()
         uncond_model_kwargs[self.cond_kwarg] = None
 
         skip_seq = self.skip_seq[:-1].tolist()
         skip_seq_next = self.skip_seq[1:].tolist()
+        pbar = tqdm.tqdm(total=len(skip_seq), **tqdm_kwargs)
         for t, t_next in zip(skip_seq, skip_seq_next):
             t_batch = torch.full((img.shape[0], ), t, device=img.device, dtype=torch.long)
             model_output_cond = model(img, t_batch, **model_kwargs)
@@ -402,13 +427,18 @@ class ClassifierFree:
                 model_output_cond, model_output_uncond, img, t, t_next, clip_denoised, guidance_scale,
             )
             img = out['sample']
+            pbar.update(1)
             yield out
+        pbar.close()
 
     def ddim_sample_inversion(
-            self, model: nn.Module, img: Tensor, clip_denoised: bool = None,
-            guidance_scale: float = None, **model_kwargs,
+            self, model: nn.Module, img: Tensor,
+            clip_denoised: bool = None, guidance_scale: float = None,
+            tqdm_kwargs: Dict = None, **model_kwargs,
     ):
         sample = None
-        for out in self.ddim_sample_inversion_loop(model, img, clip_denoised, guidance_scale, **model_kwargs):
+        for out in self.ddim_sample_inversion_loop(
+                model, img, clip_denoised, guidance_scale, tqdm_kwargs, **model_kwargs,
+        ):
             sample = out['sample']
         return sample

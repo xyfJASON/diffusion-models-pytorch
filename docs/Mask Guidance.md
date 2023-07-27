@@ -26,7 +26,6 @@ accelerate-launch sample_mask_guided.py  -c CONFIG \
                                          --input_dir INPUT_DIR \
                                          --save_dir SAVE_DIR \
                                          [--seed SEED] \
-                                         [--load_ema LOAD_EMA] \
                                          [--var_type VAR_TYPE] \
                                          [--skip_type SKIP_TYPE] \
                                          [--skip_steps SKIP_STEPS] \

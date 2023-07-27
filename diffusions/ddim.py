@@ -1,3 +1,6 @@
+import tqdm
+from typing import Dict
+
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -46,8 +49,10 @@ class DDIM(DDPM):
         sqrt_recipm1_alphas_cumprod_t = (1. / self.alphas_cumprod[t] - 1.) ** 0.5
         return (sqrt_recip_alphas_cumprod_t * xt - x0) / sqrt_recipm1_alphas_cumprod_t
 
-    def ddim_p_sample(self, model_output: Tensor, xt: Tensor, t: int, t_prev: int,
-                      clip_denoised: bool = True, eta: float = None):
+    def ddim_p_sample(
+            self, model_output: Tensor, xt: Tensor, t: int, t_prev: int,
+            clip_denoised: bool = True, eta: float = None,
+    ):
         """ Sample from p_theta(x{t-1} | xt) """
         if eta is None:
             eta = self.eta
@@ -86,27 +91,40 @@ class DDIM(DDPM):
             sample = mean + torch.sqrt(var) * torch.randn_like(xt)
         return {'sample': sample, 'pred_x0': pred_x0}
 
-    def ddim_sample_loop(self, model: nn.Module, init_noise: Tensor,
-                         clip_denoised: bool = None, eta: float = None, **model_kwargs):
+    def ddim_sample_loop(
+            self, model: nn.Module, init_noise: Tensor,
+            clip_denoised: bool = None, eta: float = None,
+            tqdm_kwargs: Dict = None, **model_kwargs,
+    ):
+        if tqdm_kwargs is None:
+            tqdm_kwargs = dict()
         img = init_noise
         skip_seq = self.skip_seq.tolist()
         skip_seq_prev = [-1] + self.skip_seq[:-1].tolist()
+        pbar = tqdm.tqdm(total=len(skip_seq), **tqdm_kwargs)
         for t, t_prev in zip(reversed(skip_seq), reversed(skip_seq_prev)):
             t_batch = torch.full((img.shape[0], ), t, device=self.device, dtype=torch.long)
             model_output = model(img, t_batch, **model_kwargs)
             out = self.ddim_p_sample(model_output, img, t, t_prev, clip_denoised, eta)
             img = out['sample']
+            pbar.update(1)
             yield out
+        pbar.close()
 
-    def ddim_sample(self, model: nn.Module, init_noise: Tensor,
-                    clip_denoised: bool = None, eta: float = None, **model_kwargs):
+    def ddim_sample(
+            self, model: nn.Module, init_noise: Tensor,
+            clip_denoised: bool = None, eta: float = None,
+            tqdm_kwargs: Dict = None, **model_kwargs,
+    ):
         sample = None
-        for out in self.ddim_sample_loop(model, init_noise, clip_denoised, eta, **model_kwargs):
+        for out in self.ddim_sample_loop(model, init_noise, clip_denoised, eta, tqdm_kwargs, **model_kwargs):
             sample = out['sample']
         return sample
 
-    def ddim_p_sample_inversion(self, model_output: Tensor, xt: Tensor, t: int, t_next: int,
-                                clip_denoised: bool = None, eta: float = None):
+    def ddim_p_sample_inversion(
+            self, model_output: Tensor, xt: Tensor, t: int, t_next: int,
+            clip_denoised: bool = None, eta: float = None,
+    ):
         """ Sample x{t+1} from xt, only valid for DDIM (eta=0) """
         if eta is None:
             eta = self.eta
@@ -138,20 +156,31 @@ class DDIM(DDPM):
                   torch.sqrt(1. - alphas_cumprod_t_next) * pred_eps)
         return {'sample': sample, 'pred_x0': pred_x0}
 
-    def ddim_sample_inversion_loop(self, model: nn.Module, img: Tensor,
-                                   clip_denoised: bool = None, eta: float = None, **model_kwargs):
+    def ddim_sample_inversion_loop(
+            self, model: nn.Module, img: Tensor,
+            clip_denoised: bool = None, eta: float = None,
+            tqdm_kwargs: Dict = None, **model_kwargs,
+    ):
+        if tqdm_kwargs is None:
+            tqdm_kwargs = dict()
         skip_seq = self.skip_seq[:-1].tolist()
         skip_seq_next = self.skip_seq[1:].tolist()
+        pbar = tqdm.tqdm(total=len(skip_seq), **tqdm_kwargs)
         for t, t_next in zip(skip_seq, skip_seq_next):
             t_batch = torch.full((img.shape[0], ), t, device=img.device, dtype=torch.long)
             model_output = model(img, t_batch, **model_kwargs)
             out = self.ddim_p_sample_inversion(model_output, img, t, t_next, clip_denoised, eta)
             img = out['sample']
+            pbar.update(1)
             yield out
+        pbar.close()
 
-    def ddim_sample_inversion(self, model: nn.Module, img: Tensor,
-                              clip_denoised: bool = None, eta: float = None, **model_kwargs):
+    def ddim_sample_inversion(
+            self, model: nn.Module, img: Tensor,
+            clip_denoised: bool = None, eta: float = None,
+            tqdm_kwargs: Dict = None, **model_kwargs,
+    ):
         sample = None
-        for out in self.ddim_sample_inversion_loop(model, img, clip_denoised, eta, **model_kwargs):
+        for out in self.ddim_sample_inversion_loop(model, img, clip_denoised, eta, tqdm_kwargs, **model_kwargs):
             sample = out['sample']
         return sample

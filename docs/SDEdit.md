@@ -9,7 +9,6 @@
 ```shell
 accelerate-launch sample_sdedit.py -c CONFIG [--seed SEED] \
                                    --weights WEIGHTS \
-                                   [--load_ema LOAD_EMA] \
                                    [--var_type VAR_TYPE] \
                                    [--skip_type SKIP_TYPE] \
                                    [--skip_steps SKIP_STEPS] \

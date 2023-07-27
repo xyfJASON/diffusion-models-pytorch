@@ -1,5 +1,4 @@
 import os
-import tqdm
 import math
 import argparse
 from yacs.config import CfgNode as CN
@@ -11,7 +10,6 @@ from torch.utils.data import DataLoader, Subset
 
 import accelerate
 
-import models
 import diffusions
 from datasets import ImageDir
 from utils.logger import get_logger
@@ -32,10 +30,6 @@ def get_parser():
     parser.add_argument(
         '--weights', type=str, required=True,
         help='path to model weights',
-    )
-    parser.add_argument(
-        '--load_ema', type=bool, default=True,
-        help='Whether to load ema weights',
     )
     parser.add_argument(
         '--ddim_eta', type=float, default=0.0,
@@ -89,13 +83,13 @@ def sample():
     idx = 0
     img_shape = (cfg.data.img_channels, cfg.data.img_size, cfg.data.img_size)
     micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
-    batch_size = micro_batch * accelerator.num_processes
-    for bs in tqdm.tqdm(
-            amortize(args.n_samples, batch_size), desc='Sampling',
-            disable=not accelerator.is_main_process,
-    ):
+    folds = amortize(args.n_samples, micro_batch * accelerator.num_processes)
+    for i, bs in enumerate(folds):
         init_noise = torch.randn((micro_batch, *img_shape), device=device)
-        samples = diffuser.ddim_sample(model=model, init_noise=init_noise).clamp(-1, 1)
+        samples = diffuser.ddim_sample(
+            model=model, init_noise=init_noise,
+            tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
+        ).clamp(-1, 1)
         samples = accelerator.gather(samples)[:bs]
         if accelerator.is_main_process:
             for x in samples:
@@ -109,21 +103,24 @@ def sample_interpolate():
     idx = 0
     img_shape = (cfg.data.img_channels, cfg.data.img_size, cfg.data.img_size)
     micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
-    batch_size = micro_batch * accelerator.num_processes
 
     def slerp(t, z1, z2):  # noqa
         theta = torch.acos(torch.sum(z1 * z2) / (torch.linalg.norm(z1) * torch.linalg.norm(z2)))
         return torch.sin((1 - t) * theta) / torch.sin(theta) * z1 + torch.sin(t * theta) / torch.sin(theta) * z2
 
-    for bs in tqdm.tqdm(
-            amortize(args.n_samples, batch_size), desc='Sampling',
-            disable=not accelerator.is_main_process,
-    ):
+    folds = amortize(args.n_samples, micro_batch * accelerator.num_processes)
+    for i, bs in enumerate(folds):
         z1 = torch.randn((micro_batch, *img_shape), device=device)
         z2 = torch.randn((micro_batch, *img_shape), device=device)
         samples = torch.stack([
-            diffuser.ddim_sample(model=model, init_noise=slerp(t, z1, z2)).clamp(-1, 1)
-            for t in torch.linspace(0, 1, args.n_interpolate)
+            diffuser.ddim_sample(
+                model=model, init_noise=slerp(t, z1, z2),
+                tqdm_kwargs=dict(
+                    desc=f'Fold {i}/{len(folds)}, interp {j}/{args.n_interpolate}',
+                    disable=not accelerator.is_main_process,
+                ),
+            ).clamp(-1, 1)
+            for j, t in enumerate(torch.linspace(0, 1, args.n_interpolate))
         ], dim=1)
         samples = accelerator.gather(samples)[:bs]
         if accelerator.is_main_process:
@@ -144,10 +141,16 @@ def sample_reconstruction(dataset):
     )
     dataloader = accelerator.prepare(dataloader)  # type: ignore
     idx = 0
-    for X in tqdm.tqdm(dataloader, desc='Sampling', disable=not accelerator.is_main_process):
+    for i, X in enumerate(dataloader):
         X = X[0].float() if isinstance(X, (tuple, list)) else X.float()
-        noise = diffuser.ddim_sample_inversion(model=model, img=X)
-        recX = diffuser.ddim_sample(model=model, init_noise=noise)
+        noise = diffuser.ddim_sample_inversion(
+            model=model, img=X,
+            tqdm_kwargs=dict(desc=f'img2noise {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
+        )
+        recX = diffuser.ddim_sample(
+            model=model, init_noise=noise,
+            tqdm_kwargs=dict(desc=f'noise2img {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
+        )
         X = accelerator.gather_for_metrics(X)
         recX = accelerator.gather_for_metrics(recX)
         if accelerator.is_main_process:
@@ -200,11 +203,14 @@ if __name__ == '__main__':
     model = instantiate_from_config(cfg.model)
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
-    if isinstance(model, (models.UNet, models.UNetCategorialAdaGN)):
-        model.load_state_dict(ckpt['ema']['shadow'] if args.load_ema else ckpt['model'])
+    if 'ema' in ckpt:
+        model.load_state_dict(ckpt['ema']['shadow'])
+    elif 'model' in ckpt:
+        model.load_state_dict(ckpt['model'])
     else:
         model.load_state_dict(ckpt)
     logger.info(f'Successfully load model from {args.weights}')
+
     # PREPARE FOR DISTRIBUTED MODE AND MIXED PRECISION
     model = accelerator.prepare(model)
     model.eval()

@@ -1,5 +1,4 @@
 import os
-import tqdm
 import argparse
 from functools import partial
 from yacs.config import CfgNode as CN
@@ -11,7 +10,6 @@ from torch.utils.data import DataLoader, Subset
 
 import accelerate
 
-import models
 import diffusions
 from datasets import ImageDir
 from utils.logger import get_logger
@@ -33,10 +31,6 @@ def get_parser():
     parser.add_argument(
         '--weights', type=str, required=True,
         help='Path to pretrained model weights',
-    )
-    parser.add_argument(
-        '--load_ema', type=bool, default=True,
-        help='Whether to load ema weights',
     )
     parser.add_argument(
         '--var_type', type=str, default=None,
@@ -101,11 +95,14 @@ def sample(dataset):
         sample_fn = partial(diffuser.resample, resample_r=args.resample_r, resample_j=args.resample_j)
 
     idx = 0
-    for X, mask in tqdm.tqdm(dataloader, desc='Sampling', disable=not accelerator.is_main_process):
+    for i, (X, mask) in enumerate(dataloader):
         init_noise = torch.randn_like(X)
         masked_image = X * mask
         diffuser.set_mask_and_image(masked_image, mask.float())
-        recX = sample_fn(model=model, init_noise=init_noise).clamp(-1, 1)
+        recX = sample_fn(
+            model=model, init_noise=init_noise,
+            tqdm_kwargs=dict(desc=f'Fold {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
+        ).clamp(-1, 1)
         recX = accelerator.gather_for_metrics(recX)
         if accelerator.is_main_process:
             for m, x, r in zip(masked_image, X, recX):
@@ -157,11 +154,14 @@ if __name__ == '__main__':
     model = instantiate_from_config(cfg.model)
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
-    if isinstance(model, (models.UNet, models.UNetCategorialAdaGN)):
-        model.load_state_dict(ckpt['ema']['shadow'] if args.load_ema else ckpt['model'])
+    if 'ema' in ckpt:
+        model.load_state_dict(ckpt['ema']['shadow'])
+    elif 'model' in ckpt:
+        model.load_state_dict(ckpt['model'])
     else:
         model.load_state_dict(ckpt)
     logger.info(f'Successfully load model from {args.weights}')
+
     # PREPARE FOR DISTRIBUTED MODE AND MIXED PRECISION
     model = accelerator.prepare(model)
     model.eval()

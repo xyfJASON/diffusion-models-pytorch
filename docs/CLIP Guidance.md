@@ -17,7 +17,6 @@ where $y$ is the input text, $E_\text{image}$ and $E_\text{text}$ are CLIP's ima
 accelerate-launch sample_clip_guided.py -c CONFIG \
                                         [--seed SEED] \
                                         --weights WEIGHTS \
-                                        [--load_ema LOAD_EMA] \
                                         [--var_type VAR_TYPE] \
                                         [--skip_type SKIP_TYPE] \
                                         [--skip_steps SKIP_STEPS] \

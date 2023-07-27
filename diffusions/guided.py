@@ -1,3 +1,6 @@
+import tqdm
+from typing import Dict
+
 import torch
 from torch import Tensor
 import torch.nn as nn
@@ -169,8 +172,10 @@ class Guided:
         """ Function that applies guidance on sampled x{t-1}. """
         pass
 
-    def apply_guidance(self, sample: Tensor, mean: Tensor, var: Tensor, pred_x0: Tensor, pred_eps: Tensor,
-                       xt: Tensor, t: int, t_prev: int):
+    def apply_guidance(
+            self, sample: Tensor, mean: Tensor, var: Tensor, pred_x0: Tensor, pred_eps: Tensor,
+            xt: Tensor, t: int, t_prev: int,
+    ):
         """ Apply guidance to p_theta(x{t-1} | xt).
 
         Args:
@@ -219,8 +224,10 @@ class Guided:
 
         return new_sample, new_mean, new_x0, new_eps
 
-    def p_sample(self, model_output: Tensor, xt: Tensor, t: int, t_prev: int,
-                 var_type: str = None, clip_denoised: bool = None):
+    def p_sample(
+            self, model_output: Tensor, xt: Tensor, t: int, t_prev: int,
+            var_type: str = None, clip_denoised: bool = None,
+    ):
         """ Sample from p_theta(x{t-1} | xt).
 
         Args:
@@ -288,27 +295,40 @@ class Guided:
 
         return {'sample': sample, 'pred_x0': pred_x0}
 
-    def sample_loop(self, model: nn.Module, init_noise: Tensor,
-                    var_type: str = None, clip_denoised: bool = None, **model_kwargs):
+    def sample_loop(
+            self, model: nn.Module, init_noise: Tensor,
+            var_type: str = None, clip_denoised: bool = None,
+            tqdm_kwargs: Dict = None, **model_kwargs,
+    ):
+        if tqdm_kwargs is None:
+            tqdm_kwargs = dict()
         img = init_noise
         skip_seq = self.skip_seq.tolist()
         skip_seq_prev = [-1] + self.skip_seq[:-1].tolist()
+        pbar = tqdm.tqdm(total=len(skip_seq), **tqdm_kwargs)
         for t, t_prev in zip(reversed(skip_seq), reversed(skip_seq_prev)):
             t_batch = torch.full((img.shape[0], ), t, device=self.device, dtype=torch.long)
             model_output = model(img, t_batch, **model_kwargs)
             out = self.p_sample(model_output, img, t, t_prev, var_type, clip_denoised)
             img = out['sample']
+            pbar.update(1)
             yield out
+        pbar.close()
 
-    def sample(self, model: nn.Module, init_noise: Tensor,
-               var_type: str = None, clip_denoised: bool = None, **model_kwargs):
+    def sample(
+            self, model: nn.Module, init_noise: Tensor,
+            var_type: str = None, clip_denoised: bool = None,
+            tqdm_kwargs: Dict = None, **model_kwargs,
+    ):
         sample = None
-        for out in self.sample_loop(model, init_noise, var_type, clip_denoised, **model_kwargs):
+        for out in self.sample_loop(model, init_noise, var_type, clip_denoised, tqdm_kwargs, **model_kwargs):
             sample = out['sample']
         return sample
 
-    def ddim_p_sample(self, model_output: Tensor, xt: Tensor, t: int, t_prev: int,
-                      clip_denoised: bool = None, eta: float = 0.0):
+    def ddim_p_sample(
+            self, model_output: Tensor, xt: Tensor, t: int, t_prev: int,
+            clip_denoised: bool = None, eta: float = 0.0,
+    ):
         """ Sample from p(x{t-1} | xt) using DDIM, similar to p_sample. """
         if clip_denoised is None:
             clip_denoised = self.clip_denoised
@@ -348,21 +368,32 @@ class Guided:
 
         return {'sample': sample, 'pred_x0': pred_x0}
 
-    def ddim_sample_loop(self, model: nn.Module, init_noise: Tensor,
-                         clip_denoised: bool = None, eta: float = 0.0, **model_kwargs):
+    def ddim_sample_loop(
+            self, model: nn.Module, init_noise: Tensor,
+            clip_denoised: bool = None, eta: float = 0.0,
+            tqdm_kwargs: Dict = None, **model_kwargs,
+    ):
+        if tqdm_kwargs is None:
+            tqdm_kwargs = dict()
         img = init_noise
         skip_seq = self.skip_seq.tolist()
         skip_seq_prev = [-1] + self.skip_seq[:-1].tolist()
+        pbar = tqdm.tqdm(total=len(skip_seq), **tqdm_kwargs)
         for t, t_prev in zip(reversed(skip_seq), reversed(skip_seq_prev)):
             t_batch = torch.full((img.shape[0], ), t, device=self.device, dtype=torch.long)
             model_output = model(img, t_batch, **model_kwargs)
             out = self.ddim_p_sample(model_output, img, t, t_prev, clip_denoised, eta)
             img = out['sample']
+            pbar.update(1)
             yield out
+        pbar.close()
 
-    def ddim_sample(self, model: nn.Module, init_noise: Tensor,
-                    clip_denoised: bool = None, eta: float = 0.0, **model_kwargs):
+    def ddim_sample(
+            self, model: nn.Module, init_noise: Tensor,
+            clip_denoised: bool = None, eta: float = 0.0,
+            tqdm_kwargs: Dict = None, **model_kwargs,
+    ):
         sample = None
-        for out in self.ddim_sample_loop(model, init_noise, clip_denoised, eta, **model_kwargs):
+        for out in self.ddim_sample_loop(model, init_noise, clip_denoised, eta, tqdm_kwargs, **model_kwargs):
             sample = out['sample']
         return sample

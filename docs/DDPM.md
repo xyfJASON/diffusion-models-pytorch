@@ -12,7 +12,7 @@ accelerate-launch train_ddpm.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
 
 - This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
 - Results (logs, checkpoints, tensorboard, etc.) of each run will be saved to `EXP_DIR`. If `EXP_DIR` is not specified, they will be saved to `runs/exp-{current time}/`.
-- To modify some configuration items without creating a new configuration file, you can pass `--key value` pairs to the script. For example, the default variance schedule in `./configs/ddpm_cifar10.yaml` is linear, and if you want to change it to cosine, you can simply pass `--diffusion.beta_schedule cosine`.
+- To modify some configuration items without creating a new configuration file, you can pass `--key value` pairs to the script. For example, the default variance schedule in `./configs/ddpm_cifar10.yaml` is linear, and if you want to change it to cosine, you can simply pass `--diffusion.params.beta_schedule cosine`.
 
 For example, to train on CIFAR-10 with default settings:
 
@@ -28,7 +28,6 @@ accelerate-launch train_ddpm.py -c ./configs/ddpm_cifar10.yaml
 accelerate-launch sample_ddpm.py -c CONFIG \
                                  [--seed SEED] \
                                  --weights WEIGHTS \
-                                 [--load_ema LOAD_EMA] \
                                  [--var_type VAR_TYPE] \
                                  [--skip_type SKIP_TYPE] \
                                  [--skip_steps SKIP_STEPS] \
@@ -135,7 +134,6 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
 </p>
 
 
-
 **Progressive generation**:
 
 <p align="center">
@@ -144,3 +142,4 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
 <p align="center">
   <img src="../assets/ddpm-celebahq-progressive.png" width=50% />
 </p>
+

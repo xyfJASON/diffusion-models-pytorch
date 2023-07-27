@@ -40,7 +40,6 @@ train:
   n_steps: 500000
   batch_size: 64
   clip_grad_norm: 1.0
-  resume: ~
   print_freq: 400
   save_freq: 10000
   sample_freq: 5000

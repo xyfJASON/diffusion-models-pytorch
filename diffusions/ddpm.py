@@ -1,3 +1,6 @@
+import tqdm
+from typing import Dict
+
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -134,8 +137,10 @@ class DDPM:
         sqrt_recipm1_alphas_cumprod_t = (1. / self.alphas_cumprod[t] - 1.) ** 0.5
         return sqrt_recip_alphas_cumprod_t * xt - sqrt_recipm1_alphas_cumprod_t * eps
 
-    def p_sample(self, model_output: Tensor, xt: Tensor, t: int, t_prev: int,
-                 var_type: str = None, clip_denoised: bool = None):
+    def p_sample(
+            self, model_output: Tensor, xt: Tensor, t: int, t_prev: int,
+            var_type: str = None, clip_denoised: bool = None,
+    ):
         """ Sample from p_theta(x{t-1} | xt).
 
         Args:
@@ -201,21 +206,32 @@ class DDPM:
 
         return {'sample': sample, 'pred_x0': pred_x0}
 
-    def sample_loop(self, model: nn.Module, init_noise: Tensor,
-                    var_type: str = None, clip_denoised: bool = None, **model_kwargs):
+    def sample_loop(
+            self, model: nn.Module, init_noise: Tensor,
+            var_type: str = None, clip_denoised: bool = None,
+            tqdm_kwargs: Dict = None, **model_kwargs,
+    ):
+        if tqdm_kwargs is None:
+            tqdm_kwargs = dict()
         img = init_noise
         skip_seq = self.skip_seq.tolist()
         skip_seq_prev = [-1] + self.skip_seq[:-1].tolist()
+        pbar = tqdm.tqdm(total=len(skip_seq), **tqdm_kwargs)
         for t, t_prev in zip(reversed(skip_seq), reversed(skip_seq_prev)):
             t_batch = torch.full((img.shape[0], ), t, device=self.device)
             model_output = model(img, t_batch, **model_kwargs)
             out = self.p_sample(model_output, img, t, t_prev, var_type, clip_denoised)
             img = out['sample']
+            pbar.update(1)
             yield out
+        pbar.close()
 
-    def sample(self, model: nn.Module, init_noise: Tensor,
-               var_type: str = None, clip_denoised: bool = None, **model_kwargs):
+    def sample(
+            self, model: nn.Module, init_noise: Tensor,
+            var_type: str = None, clip_denoised: bool = None,
+            tqdm_kwargs: Dict = None, **model_kwargs,
+    ):
         sample = None
-        for out in self.sample_loop(model, init_noise, var_type, clip_denoised, **model_kwargs):
+        for out in self.sample_loop(model, init_noise, var_type, clip_denoised, tqdm_kwargs, **model_kwargs):
             sample = out['sample']
         return sample

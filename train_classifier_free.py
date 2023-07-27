@@ -1,5 +1,4 @@
 import os
-import tqdm
 import math
 import argparse
 from contextlib import nullcontext
@@ -15,7 +14,8 @@ from models import EMA
 from metrics import AverageMeter
 from utils.logger import StatusTracker, get_logger
 from utils.data import get_dataset, get_data_generator
-from utils.misc import get_time_str, create_exp_dir, check_freq, find_resume_checkpoint, instantiate_from_config
+from utils.misc import get_time_str, check_freq, amortize
+from utils.misc import create_exp_dir, find_resume_checkpoint, instantiate_from_config
 
 
 def get_parser():
@@ -27,6 +27,10 @@ def get_parser():
     parser.add_argument(
         '-e', '--exp_dir', type=str,
         help='Path to the experiment directory. Default to be ./runs/exp-{current time}/',
+    )
+    parser.add_argument(
+        '-r', '--resume', type=str,
+        help='Resume from a checkpoint. Could be a path or `best` or `latest`',
     )
     parser.add_argument(
         '-ni', '--no_interaction', action='store_true', default=False,
@@ -48,7 +52,7 @@ def train(args, cfg):
         create_exp_dir(
             exp_dir=exp_dir,
             cfg_dump=cfg.dump(sort_keys=False),
-            exist_ok=cfg.train.resume is not None,
+            exist_ok=args.resume is not None,
             time_str=args.time_str,
             no_interaction=args.no_interaction,
         )
@@ -116,7 +120,9 @@ def train(args, cfg):
         ckpt_model = torch.load(os.path.join(ckpt_path, 'model.pt'), map_location='cpu')
         model.load_state_dict(ckpt_model['model'])
         logger.info(f'Successfully load model from {ckpt_path}')
-        ema.load_state_dict(ckpt_model['ema'], device=device)
+        # load ema
+        ckpt_ema = torch.load(os.path.join(ckpt_path, 'ema.pt'), map_location='cpu')
+        ema.load_state_dict(ckpt_ema['ema'], device=device)
         logger.info(f'Successfully load ema from {ckpt_path}')
         # load optimizer
         ckpt_optimizer = torch.load(os.path.join(ckpt_path, 'optimizer.pt'), map_location='cpu')
@@ -130,18 +136,17 @@ def train(args, cfg):
     def save_ckpt(save_path: str):
         os.makedirs(save_path, exist_ok=True)
         # save model
-        accelerator.save(dict(
-            model=accelerator.unwrap_model(model).state_dict(),
-            ema=ema.state_dict(),
-        ), os.path.join(save_path, 'model.pt'))
+        accelerator.save(dict(model=accelerator.unwrap_model(model).state_dict()), os.path.join(save_path, 'model.pt'))
+        # save ema
+        accelerator.save(dict(ema=ema.state_dict()), os.path.join(save_path, 'ema.pt'))
         # save optimizer
         accelerator.save(dict(optimizer=optimizer.state_dict()), os.path.join(save_path, 'optimizer.pt'))
         # save meta information
         accelerator.save(dict(step=step), os.path.join(save_path, 'meta.pt'))
 
     # RESUME TRAINING
-    if cfg.train.resume is not None:
-        resume_path = find_resume_checkpoint(exp_dir, cfg.train.resume)
+    if args.resume is not None:
+        resume_path = find_resume_checkpoint(exp_dir, args.resume)
         logger.info(f'Resume from {resume_path}')
         load_ckpt(resume_path)
         logger.info(f'Restart training at step {step}')
@@ -180,12 +185,6 @@ def train(args, cfg):
 
     @torch.no_grad()
     def sample(savepath: str):
-
-        def amortize(n_samples: int, _batch_size: int):
-            k = n_samples // _batch_size
-            r = n_samples % _batch_size
-            return k * [_batch_size] if r == 0 else k * [_batch_size] + [r]
-
         unwrapped_model = accelerator.unwrap_model(model)
         ema.apply_shadow()
         # use skipped ddim to save time during training
@@ -194,19 +193,18 @@ def train(args, cfg):
         all_samples = []
         img_shape = (cfg.data.img_channels, cfg.data.img_size, cfg.data.img_size)
         mb = min(micro_batch, math.ceil(cfg.train.n_samples_each_class / accelerator.num_processes))
-        batch_size = mb * accelerator.num_processes
         for c in range(min(10, cfg.data.num_classes)):
             samples_c = []
-            for bs in tqdm.tqdm(
-                    amortize(cfg.train.n_samples_each_class, batch_size), desc='Sampling',
-                    leave=False, disable=not accelerator.is_main_process,
-            ):
+            folds = amortize(cfg.train.n_samples_each_class, mb * accelerator.num_processes)
+            for i, bs in enumerate(folds):
                 init_noise = torch.randn((mb, *img_shape), device=device)
                 labels = torch.full((mb, ), fill_value=c, device=device)
                 samples = diffuser.ddim_sample(
-                    model=unwrapped_model,
-                    init_noise=init_noise,
-                    y=labels,
+                    model=unwrapped_model, init_noise=init_noise, y=labels,
+                    tqdm_kwargs=dict(
+                        desc=f'Sampling fold {i}/{len(folds)}',
+                        leave=False, disable=not accelerator.is_main_process,
+                    ),
                 ).clamp(-1, 1)
                 samples = accelerator.gather(samples)[:bs]
                 samples_c.append(samples)

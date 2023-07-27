@@ -1,5 +1,4 @@
 import os
-import tqdm
 import math
 import argparse
 from functools import partial
@@ -10,10 +9,9 @@ from torchvision.utils import save_image
 
 import accelerate
 
-import models
 import diffusions
 from utils.logger import get_logger
-from utils.misc import image_norm_to_float, instantiate_from_config
+from utils.misc import image_norm_to_float, instantiate_from_config, amortize
 
 
 def get_parser():
@@ -30,10 +28,6 @@ def get_parser():
     parser.add_argument(
         '--weights', type=str, required=True,
         help='Path to pretrained model weights',
-    )
-    parser.add_argument(
-        '--load_ema', type=bool, default=True,
-        help='Whether to load ema weights',
     )
     parser.add_argument(
         '--skip_type', type=str, default='uniform',
@@ -76,12 +70,6 @@ def get_parser():
     return parser
 
 
-def amortize(n_samples: int, batch_size: int):
-    k = n_samples // batch_size
-    r = n_samples % batch_size
-    return k * [batch_size] if r == 0 else k * [batch_size] + [r]
-
-
 @torch.no_grad()
 def sample():
     img_shape = (cfg.data.img_channels, cfg.data.img_size, cfg.data.img_size)
@@ -102,13 +90,14 @@ def sample():
         os.makedirs(os.path.join(args.save_dir, f'class{c}'), exist_ok=True)
         idx = 0
         logger.info(f'Sampling class {c}')
-        for bs in tqdm.tqdm(
-                amortize(args.n_samples_each_class, batch_size), desc='Sampling',
-                disable=not accelerator.is_main_process,
-        ):
+        folds = amortize(args.n_samples_each_class, batch_size)
+        for i, bs in enumerate(folds):
             init_noise = torch.randn((bs, *img_shape), device=device)
             labels = torch.full((bs, ), fill_value=c, device=device)
-            samples = sample_fn(model=model, init_noise=init_noise, y=labels).clamp(-1, 1)
+            samples = sample_fn(
+                model=model, init_noise=init_noise, y=labels,
+                tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
+            ).clamp(-1, 1)
             samples = accelerator.gather(samples)[:bs]
             if accelerator.is_main_process:
                 for x in samples:
@@ -158,8 +147,10 @@ if __name__ == '__main__':
     model = instantiate_from_config(cfg.model)
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
-    if isinstance(model, (models.UNet, models.UNetCategorialAdaGN)):
-        model.load_state_dict(ckpt['ema']['shadow'] if args.load_ema else ckpt['model'])
+    if 'ema' in ckpt:
+        model.load_state_dict(ckpt['ema']['shadow'])
+    elif 'model' in ckpt:
+        model.load_state_dict(ckpt['model'])
     else:
         model.load_state_dict(ckpt)
     logger.info(f'Successfully load model from {args.weights}')

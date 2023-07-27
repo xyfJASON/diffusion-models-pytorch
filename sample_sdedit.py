@@ -10,7 +10,6 @@ from torchvision.utils import save_image
 
 import accelerate
 
-import models
 import diffusions
 from datasets import ImageDir
 from utils.logger import get_logger
@@ -33,15 +32,11 @@ def get_parser():
         help='Path to pretrained model weights',
     )
     parser.add_argument(
-        '--load_ema', type=bool, default=True,
-        help='Whether to load ema weights',
-    )
-    parser.add_argument(
         '--var_type', type=str, default=None,
         help='Type of variance of the reverse process',
     )
     parser.add_argument(
-        '--skip_type', type=str, default=None,
+        '--skip_type', type=str, default='uniform',
         help='Type of skip sampling',
     )
     parser.add_argument(
@@ -89,23 +84,29 @@ def sample():
     assert 0 <= args.edit_steps < len(diffuser.skip_seq)
     time_seq = diffuser.skip_seq[:args.edit_steps].tolist()
     time_seq_prev = [-1] + time_seq[:-1]
-    for img in tqdm.tqdm(dataloader, desc='Sampling', disable=not accelerator.is_main_process):
+    for i, img in enumerate(dataloader):
         img = img.float()
         noised_img = diffuser.q_sample(x0=img, t=time_seq[-1])
         edited_img = noised_img.clone()
+        pbar = tqdm.tqdm(
+            total=len(time_seq), desc=f'Fold {i}/{len(dataloader)}',
+            disable=not accelerator.is_main_process,
+        )
         for t, t_prev in zip(reversed(time_seq), reversed(time_seq_prev)):
             t_batch = torch.full((edited_img.shape[0], ), t, device=device)
             model_output = model(edited_img, t_batch)
             out = diffuser.p_sample(model_output, edited_img, t, t_prev)
             edited_img = out['sample']
+            pbar.update(1)
+        pbar.close()
         edited_img.clamp_(-1, 1)
         img = accelerator.gather_for_metrics(img)
         noised_img = accelerator.gather_for_metrics(noised_img)
         edited_img = accelerator.gather_for_metrics(edited_img)
         if accelerator.is_main_process:
-            for i, ni, ei in zip(img, noised_img, edited_img):
+            for im, nim, eim in zip(img, noised_img, edited_img):
                 save_image(
-                    [i, ni, ei], os.path.join(args.save_dir, f'{idx}.png'),
+                    [im, nim, eim], os.path.join(args.save_dir, f'{idx}.png'),
                     nrow=3, normalize=True, value_range=(-1, 1),
                 )
                 idx += 1
@@ -142,7 +143,7 @@ if __name__ == '__main__':
     # BUILD DIFFUSER
     cfg.diffusion.params.update({
         'var_type': args.var_type or cfg.diffusion.params.var_type,
-        'skip_type': args.skip_type,
+        'skip_type': None if args.skip_steps is None else args.skip_type,
         'skip_steps': args.skip_steps,
         'device': device,
     })
@@ -152,11 +153,14 @@ if __name__ == '__main__':
     model = instantiate_from_config(cfg.model)
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
-    if isinstance(model, (models.UNet, models.UNetCategorialAdaGN)):
-        model.load_state_dict(ckpt['ema']['shadow'] if args.load_ema else ckpt['model'])
+    if 'ema' in ckpt:
+        model.load_state_dict(ckpt['ema']['shadow'])
+    elif 'model' in ckpt:
+        model.load_state_dict(ckpt['model'])
     else:
         model.load_state_dict(ckpt)
     logger.info(f'Successfully load model from {args.weights}')
+
     # PREPARE FOR DISTRIBUTED MODE AND MIXED PRECISION
     model = accelerator.prepare(model)
     model.eval()

@@ -29,7 +29,6 @@ accelerate-launch train_classifier_free.py -c ./configs/classifier_free_cifar10.
 accelerate-launch sample_classifier_free.py -c CONFIG \
                                             [--seed SEED] \
                                             --weights WEIGHTS \
-                                            [--load_ema LOAD_EMA] \
                                             [--skip_type SKIP_TYPE] \
                                             [--skip_steps SKIP_STEPS] \
                                             --guidance_scale GUIDANCE_SCALE \
@@ -86,7 +85,7 @@ From left to right: $s=0$ (unconditional), $s=1.0$ (non-guided conditional), $s=
 
 **Samples with different guidance scales on ImageNet 256x256**:
 
-The pretrained models are sourced from [openai/guided-diffusion](https://github.com/openai/guided-diffusion). Note that these models were initially designed for classifier guidance and thus are either conditional-only or unconditional-only. However, to facilitate classifier-free guidance, it would be more convenient if the model can handle both conditional and unconditional cases. To address this, I've defined a new class [UNetCombined](../models/openai/guided_diffusion/unet_combined.py), which combines the conditional-only and unconditional-only models into a single model. Also, we need to combine the pretrained weights for loading, which can be done by the following script:
+The pretrained models are sourced from [openai/guided-diffusion](https://github.com/openai/guided-diffusion). Note that these models were initially designed for classifier guidance and thus are either conditional-only or unconditional-only. However, to facilitate classifier-free guidance, it would be more convenient if the model can handle both conditional and unconditional cases. To address this, I define a new class [UNetCombined](../models/openai/guided_diffusion/unet_combined.py), which combines the conditional-only and unconditional-only models into a single model. Also, we need to combine the pretrained weights for loading, which can be done by the following script:
 
 ```python
 import yaml

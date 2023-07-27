@@ -1,5 +1,4 @@
 import os
-import tqdm
 import math
 import argparse
 from yacs.config import CfgNode as CN
@@ -9,10 +8,9 @@ from torchvision.utils import save_image
 
 import accelerate
 
-import models
 import diffusions
 from utils.logger import get_logger
-from utils.misc import image_norm_to_float, instantiate_from_config
+from utils.misc import image_norm_to_float, instantiate_from_config, amortize
 
 
 def get_parser():
@@ -31,15 +29,11 @@ def get_parser():
         help='Path to pretrained model weights',
     )
     parser.add_argument(
-        '--load_ema', type=bool, default=True,
-        help='Whether to load ema weights',
-    )
-    parser.add_argument(
         '--var_type', type=str, default=None,
         help='Type of variance of the reverse process',
     )
     parser.add_argument(
-        '--skip_type', type=str, default=None,
+        '--skip_type', type=str, default='uniform',
         help='Type of skip sampling',
     )
     parser.add_argument(
@@ -73,22 +67,18 @@ def get_parser():
     return parser
 
 
-def amortize(n_samples: int, batch_size: int):
-    k = n_samples // batch_size
-    r = n_samples % batch_size
-    return k * [batch_size] if r == 0 else k * [batch_size] + [r]
-
-
 @torch.no_grad()
 def sample():
     idx = 0
     img_shape = (cfg.data.img_channels, cfg.data.img_size, cfg.data.img_size)
     micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
-    batch_size = micro_batch * accelerator.num_processes
-    for bs in tqdm.tqdm(amortize(args.n_samples, batch_size), desc='Sampling',
-                        disable=not accelerator.is_main_process):
+    folds = amortize(args.n_samples, micro_batch * accelerator.num_processes)
+    for i, bs in enumerate(folds):
         init_noise = torch.randn((micro_batch, *img_shape), device=device)
-        samples = diffuser.sample(model=model, init_noise=init_noise).clamp(-1, 1)
+        samples = diffuser.sample(
+            model=model, init_noise=init_noise,
+            tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
+        ).clamp(-1, 1)
         samples = accelerator.gather(samples)[:bs]
         if accelerator.is_main_process:
             for x in samples:
@@ -103,11 +93,13 @@ def sample_denoise():
     freq = len(diffuser.skip_seq) // args.n_denoise
     img_shape = (cfg.data.img_channels, cfg.data.img_size, cfg.data.img_size)
     micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
-    batch_size = micro_batch * accelerator.num_processes
-    for bs in tqdm.tqdm(amortize(args.n_samples, batch_size), desc='Sampling',
-                        disable=not accelerator.is_main_process):
+    folds = amortize(args.n_samples, micro_batch * accelerator.num_processes)
+    for i, bs in enumerate(folds):
         init_noise = torch.randn((micro_batch, *img_shape), device=device)
-        sample_loop = diffuser.sample_loop(model=model, init_noise=init_noise)
+        sample_loop = diffuser.sample_loop(
+            model=model, init_noise=init_noise,
+            tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
+        )
         samples = [
             out['sample'] for timestep, out in enumerate(sample_loop)
             if (len(diffuser.skip_seq) - timestep - 1) % freq == 0
@@ -127,11 +119,13 @@ def sample_progressive():
     freq = len(diffuser.skip_seq) // args.n_progressive
     img_shape = (cfg.data.img_channels, cfg.data.img_size, cfg.data.img_size)
     micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
-    batch_size = micro_batch * accelerator.num_processes
-    for bs in tqdm.tqdm(amortize(args.n_samples, batch_size), desc='Sampling',
-                        disable=not accelerator.is_main_process):
+    folds = amortize(args.n_samples, micro_batch * accelerator.num_processes)
+    for i, bs in enumerate(folds):
         init_noise = torch.randn((micro_batch, *img_shape), device=device)
-        sample_loop = diffuser.sample_loop(model=model, init_noise=init_noise)
+        sample_loop = diffuser.sample_loop(
+            model=model, init_noise=init_noise,
+            tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
+        )
         samples = [
             out['pred_x0'] for timestep, out in enumerate(sample_loop)
             if (len(diffuser.skip_seq) - timestep - 1) % freq == 0
@@ -176,7 +170,7 @@ if __name__ == '__main__':
     # BUILD DIFFUSER
     cfg.diffusion.params.update({
         'var_type': args.var_type or cfg.diffusion.params.var_type,
-        'skip_type': args.skip_type,
+        'skip_type': None if args.skip_steps is None else args.skip_type,
         'skip_steps': args.skip_steps,
         'device': device,
     })
@@ -186,11 +180,14 @@ if __name__ == '__main__':
     model = instantiate_from_config(cfg.model)
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
-    if isinstance(model, (models.UNet, models.UNetCategorialAdaGN)):
-        model.load_state_dict(ckpt['ema']['shadow'] if args.load_ema else ckpt['model'])
+    if 'ema' in ckpt:
+        model.load_state_dict(ckpt['ema']['shadow'])
+    elif 'model' in ckpt:
+        model.load_state_dict(ckpt['model'])
     else:
         model.load_state_dict(ckpt)
     logger.info(f'Successfully load model from {args.weights}')
+
     # PREPARE FOR DISTRIBUTED MODE AND MIXED PRECISION
     model = accelerator.prepare(model)
     model.eval()

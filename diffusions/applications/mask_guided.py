@@ -1,3 +1,6 @@
+import tqdm
+from typing import Dict
+
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -67,13 +70,19 @@ class MaskGuided(Guided):
         alphas_t_next = alphas_cumprod_t_next / alphas_cumprod_t
         return torch.sqrt(alphas_t_next) * xt + torch.sqrt(1. - alphas_t_next) * torch.randn_like(xt)
 
-    def resample_loop(self, model: nn.Module, init_noise: Tensor,
-                      var_type: str = None, clip_denoised: bool = None,
-                      resample_r: int = 10, resample_j: int = 10, **model_kwargs):
+    def resample_loop(
+            self, model: nn.Module, init_noise: Tensor,
+            var_type: str = None, clip_denoised: bool = None,
+            resample_r: int = 10, resample_j: int = 10,
+            tqdm_kwargs: Dict = None, **model_kwargs,
+    ):
         """ Sample following RePaint paper. """
+        if tqdm_kwargs is None:
+            tqdm_kwargs = dict()
         img = init_noise
         resample_seq1 = self.get_resample_seq(resample_r, resample_j)
         resample_seq2 = resample_seq1[1:] + [-1]
+        pbar = tqdm.tqdm(total=len(resample_seq1), **tqdm_kwargs)
         for t1, t2 in zip(resample_seq1, resample_seq2):
             if t1 > t2:
                 t_batch = torch.full((img.shape[0], ), t1, device=self.device, dtype=torch.long)
@@ -84,13 +93,18 @@ class MaskGuided(Guided):
             else:
                 img = self.q_sample_one_step(img, t1, t2)
                 yield {'sample': img}
+            pbar.update(1)
+        pbar.close()
 
-    def resample(self, model: nn.Module, init_noise: Tensor,
-                 var_type: str = None, clip_denoised: bool = None,
-                 resample_r: int = 10, resample_j: int = 10, **model_kwargs):
+    def resample(
+            self, model: nn.Module, init_noise: Tensor,
+            var_type: str = None, clip_denoised: bool = None,
+            resample_r: int = 10, resample_j: int = 10,
+            tqdm_kwargs: Dict = None, **model_kwargs
+    ):
         sample = None
         for out in self.resample_loop(
-                model, init_noise, var_type, clip_denoised, resample_r, resample_j, **model_kwargs,
+                model, init_noise, var_type, clip_denoised, resample_r, resample_j, tqdm_kwargs, **model_kwargs,
         ):
             sample = out['sample']
         return sample

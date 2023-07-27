@@ -1,5 +1,4 @@
 import os
-import tqdm
 import argparse
 from functools import partial
 from yacs.config import CfgNode as CN
@@ -11,7 +10,6 @@ from torch.utils.data import DataLoader, Subset
 
 import accelerate
 
-import models
 import diffusions
 from datasets import ImageDir
 from utils.logger import get_logger
@@ -32,10 +30,6 @@ def get_parser():
     parser.add_argument(
         '--weights', type=str, required=True,
         help='Path to pretrained model weights',
-    )
-    parser.add_argument(
-        '--load_ema', type=bool, default=True,
-        help='Whether to load ema weights',
     )
     parser.add_argument(
         '--var_type', type=str, default=None,
@@ -101,11 +95,14 @@ def sample(dataset):
         sample_fn = partial(diffuser.ddim_sample, eta=args.ddim_eta)
 
     idx = 0
-    for X in tqdm.tqdm(dataloader, desc='Sampling', disable=not accelerator.is_main_process):
+    for i, X in enumerate(dataloader):
         X = X[0] if isinstance(X, (list, tuple)) else X
         init_noise = torch.randn_like(X)
         diffuser.set_ref_images(ref_images=X)
-        out = sample_fn(model=model, init_noise=init_noise).clamp(-1, 1)
+        out = sample_fn(
+            model=model, init_noise=init_noise,
+            tqdm_kwargs=dict(desc=f'Fold {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
+        ).clamp(-1, 1)
         out = accelerator.gather_for_metrics(out)
         if accelerator.is_main_process:
             for x, o in zip(X, out):
@@ -158,11 +155,14 @@ if __name__ == '__main__':
     model = instantiate_from_config(cfg.model)
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
-    if isinstance(model, (models.UNet, models.UNetCategorialAdaGN)):
-        model.load_state_dict(ckpt['ema']['shadow'] if args.load_ema else ckpt['model'])
+    if 'ema' in ckpt:
+        model.load_state_dict(ckpt['ema']['shadow'])
+    elif 'model' in ckpt:
+        model.load_state_dict(ckpt['model'])
     else:
         model.load_state_dict(ckpt)
     logger.info(f'Successfully load model from {args.weights}')
+
     # PREPARE FOR DISTRIBUTED MODE AND MIXED PRECISION
     model = accelerator.prepare(model)
     model.eval()

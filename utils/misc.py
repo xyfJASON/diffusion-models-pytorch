@@ -37,6 +37,12 @@ def image_norm_to_uint8(image: torch.Tensor):
     return ((image + 1) / 2 * 255).to(dtype=torch.uint8)
 
 
+def amortize(n_samples: int, batch_size: int):
+    k = n_samples // batch_size
+    r = n_samples % batch_size
+    return k * [batch_size] if r == 0 else k * [batch_size] + [r]
+
+
 def find_resume_checkpoint(exp_dir: str, resume: str):
     """ Checkpoints are named after 'stepxxxxxx/' """
     if os.path.isdir(resume):
