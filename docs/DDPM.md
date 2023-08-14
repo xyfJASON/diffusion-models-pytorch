@@ -10,7 +10,7 @@
 accelerate-launch train_ddpm.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
 ```
 
-- This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
+- This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) for how to launch the scripts on different platforms.
 - Results (logs, checkpoints, tensorboard, etc.) of each run will be saved to `EXP_DIR`. If `EXP_DIR` is not specified, they will be saved to `runs/exp-{current time}/`.
 - To modify some configuration items without creating a new configuration file, you can pass `--key value` pairs to the script. For example, the default variance schedule in `./configs/ddpm_cifar10.yaml` is linear, and if you want to change it to cosine, you can simply pass `--diffusion.params.beta_schedule cosine`.
 
@@ -63,12 +63,14 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
 
 <table align="center" width=100%>
   <tr>
+    <th align="center">Objective</th>
     <th align="center">Type of variance</th>
     <th align="center">timesteps</th>
     <th align="center">FID ↓</th>
     <th align="center">IS ↑</th>
   </tr>
   <tr>
+    <td align="center" rowspan="8">pred-eps</td>
     <td align="center" rowspan="4">fixed-large</td>
     <td align="center">1000</td>
     <td align="center"><b>3.0459</b></td>
@@ -110,6 +112,19 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
     <td align="center">41.04793</td>
     <td align="center">7.1373 ± 0.0801</td>
   </tr>
+  <tr>
+    <td align="center" rowspan="2">pred-x0</td>
+    <td align="center">fixed-large</td>
+    <td align="center">1000</td>
+    <td align="center">13.3310</td>
+    <td align="center">7.7624 ± 0.0818</td>
+  </tr>
+  <tr>
+    <td align="center">fixed-small</td>
+    <td align="center">1000</td>
+    <td align="center">14.3750</td>
+    <td align="center">7.7426 ± 0.0759</td>
+  </tr>
  </table>
 
 
@@ -142,4 +157,3 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
 <p align="center">
   <img src="../assets/ddpm-celebahq-progressive.png" width=50% />
 </p>
-

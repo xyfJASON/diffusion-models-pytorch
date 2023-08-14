@@ -34,6 +34,12 @@ For instructions on training / sampling / evaluation, please refer to the [docs]
 
 
 
+### Pretrained weights
+
+All the checkpoints and training logs are stored in [xyfJASON/Diffusion-Models-Implementations](https://huggingface.co/xyfJASON/Diffusion-Models-Implementations/tree/main) on huggingface.
+
+
+
 ### Loading models and weights from other repositories
 
 Training a diffusion model on a large-scale dataset from scratch is time-consuming, especially with limited devices. Thus, this repository supports loading models and weights from other open source repositories, which are listed below.
@@ -87,7 +93,7 @@ Training a diffusion model on a large-scale dataset from scratch is time-consumi
 
 ## Preview
 
-This section provides a preview of the results achieved by the implemented methods and algorithms. For more comprehensive quantitative and qualitative results, please refer to the documentation in the [docs](./docs) folder.
+This section provides a preview of the results achieved by the implemented methods and algorithms. For more comprehensive quantitative and qualitative results, please refer to the documentations in the [docs](./docs) folder.
 
 
 

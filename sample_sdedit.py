@@ -94,7 +94,7 @@ def sample():
         )
         for t, t_prev in zip(reversed(time_seq), reversed(time_seq_prev)):
             t_batch = torch.full((edited_img.shape[0], ), t, device=device)
-            model_output = model(edited_img, t_batch)
+            model_output = accelerator.unwrap_model(model)(edited_img, t_batch)
             out = diffuser.p_sample(model_output, edited_img, t, t_prev)
             edited_img = out['sample']
             pbar.update(1)

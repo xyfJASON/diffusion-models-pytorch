@@ -1,15 +1,16 @@
 import os
+import tqdm
 import argparse
-from functools import partial
 from yacs.config import CfgNode as CN
 
 import torch
 import torchvision.transforms as T
+from torch.utils.data import DataLoader
 from torchvision.utils import save_image
-from torch.utils.data import DataLoader, Subset
 
 import accelerate
 
+import models
 import diffusions
 from datasets import ImageDir
 from utils.logger import get_logger
@@ -22,18 +23,31 @@ def get_parser():
         '-c', '--config', type=str, required=True,
         help='Path to training configuration file',
     )
-    # arguments related to sampling
+    # arguments for sampling
     parser.add_argument(
-        '--seed', type=int, default=2022,
+        '--seed', type=int, default=2001,
         help='Set random seed',
     )
     parser.add_argument(
-        '--weights', type=str, required=True,
-        help='Path to pretrained model weights',
+        '--input_dir', type=str, required=True,
+        help='Input directory containing images in domain A',
     )
     parser.add_argument(
-        '--var_type', type=str, default=None,
-        help='Type of variance of the reverse process',
+        '--weights', type=str, required=True,
+        help='Path to model weights',
+    )
+    parser.add_argument(
+        '--guidance_scale', type=float, default=2.0,
+        help='Classifier-free guidance scale. 0 for unconditional generation, '
+             '1 for non-guided generation, >1 for guided generation',
+    )
+    parser.add_argument(
+        '--class_A', type=int, required=True,
+        help='Class label of domain A',
+    )
+    parser.add_argument(
+        '--class_B', type=int, required=True,
+        help='Class label of domain B',
     )
     parser.add_argument(
         '--skip_type', type=str, default='uniform',
@@ -44,43 +58,24 @@ def get_parser():
         help='Number of timesteps for skip sampling',
     )
     parser.add_argument(
-        '--downsample_factor', type=int, default=8,
-        help='Downsample factor of the low-pass filter',
-    )
-    parser.add_argument(
-        '--interp_method', type=str, default='cubic',
-        choices=['cubic', 'lanczos2', 'lanczos3', 'linear', 'box'],
-        help='Interpolation mode of the low-pass filter',
-    )
-    parser.add_argument(
-        '--ddim', action='store_true',
-        help='Use DDIM deterministic sampling',
-    )
-    parser.add_argument(
-        '--ddim_eta', type=float, default=0.0,
-        help='Parameter eta in DDIM sampling',
-    )
-    parser.add_argument(
-        '--n_samples', type=int, required=True,
-        help='Number of samples',
-    )
-    parser.add_argument(
-        '--input_dir', type=str, required=True,
-        help='Path to the directory containing input images',
-    )
-    parser.add_argument(
         '--save_dir', type=str, required=True,
         help='Path to directory saving samples',
     )
     parser.add_argument(
-        '--micro_batch', type=int, default=32,
+        '--micro_batch', type=int, default=500,
         help='Batch size on each process. Sample by batch is much faster',
     )
     return parser
 
 
 @torch.no_grad()
-def sample(dataset):
+def translate():
+    t = T.Compose([
+        T.Resize((cfg.data.img_size, cfg.data.img_size)),
+        T.ToTensor(),
+        T.Normalize([0.5] * 3, [0.5] * 3),
+    ])
+    dataset = ImageDir(root=args.input_dir, split='', transform=t)
     dataloader = DataLoader(
         dataset=dataset,
         batch_size=args.micro_batch,
@@ -89,26 +84,20 @@ def sample(dataset):
         prefetch_factor=cfg.dataloader.prefetch_factor,
     )
     dataloader = accelerator.prepare(dataloader)  # type: ignore
-
-    sample_fn = diffuser.sample
-    if args.ddim:
-        sample_fn = partial(diffuser.ddim_sample, eta=args.ddim_eta)
-
     idx = 0
-    for i, X in enumerate(dataloader):
-        X = X[0] if isinstance(X, (list, tuple)) else X
-        init_noise = torch.randn_like(X)
-        diffuser.set_ref_images(ref_images=X)
-        out = sample_fn(
-            model=accelerator.unwrap_model(model), init_noise=init_noise,
-            tqdm_kwargs=dict(desc=f'Fold {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
-        ).clamp(-1, 1)
-        out = accelerator.gather_for_metrics(out)
+    for X in tqdm.tqdm(dataloader, desc='Sampling', disable=not accelerator.is_main_process):
+        X = X[0].float() if isinstance(X, (tuple, list)) else X.float()
+        yA = torch.full((X.shape[0], ), args.class_A, device=device).long()
+        yB = torch.full((X.shape[0], ), args.class_B, device=device).long()
+        noise = diffuser.ddim_sample_inversion(model=model, img=X, y=yA)
+        tX = diffuser.ddim_sample(model=model, init_noise=noise, y=yB)
+        X = accelerator.gather_for_metrics(X)
+        tX = accelerator.gather_for_metrics(tX)
         if accelerator.is_main_process:
-            for x, o in zip(X, out):
+            for x, tx in zip(X, tX):
                 x = image_norm_to_float(x).cpu()
-                o = image_norm_to_float(o).cpu()
-                save_image([x, o], os.path.join(args.save_dir, f'{idx}.png'), nrow=2)
+                tx = image_norm_to_float(tx).cpu()
+                save_image([x, tx], os.path.join(args.save_dir, f'{idx}.png'), nrow=2)
                 idx += 1
 
 
@@ -133,7 +122,7 @@ if __name__ == '__main__':
         is_main_process=accelerator.is_main_process,
     )
     # SET SEED
-    accelerate.utils.set_seed(args.seed, device_specific=True)
+    accelerate.utils.set_seed(cfg.seed, device_specific=True)
     logger.info(f'Number of processes: {accelerator.num_processes}')
     logger.info(f'Distributed type: {accelerator.distributed_type}')
     logger.info(f'Mixed precision: {accelerator.mixed_precision}')
@@ -142,23 +131,19 @@ if __name__ == '__main__':
 
     # BUILD DIFFUSER
     cfg.diffusion.params.update({
-        'var_type': args.var_type or cfg.diffusion.params.var_type,
         'skip_type': None if args.skip_steps is None else args.skip_type,
         'skip_steps': args.skip_steps,
+        'guidance_scale': args.guidance_scale,
         'device': device,
-        'downsample_factor': args.downsample_factor,
-        'interp_method': args.interp_method,
     })
-    diffuser = diffusions.ILVR(**cfg.diffusion.params)
+    diffuser = diffusions.classifier_free.ClassifierFree(**cfg.diffusion.params)
 
     # BUILD MODEL
     model = instantiate_from_config(cfg.model)
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
-    if 'ema' in ckpt:
+    if isinstance(model, (models.UNet, models.UNetCategorialAdaGN)):
         model.load_state_dict(ckpt['ema']['shadow'])
-    elif 'model' in ckpt:
-        model.load_state_dict(ckpt['model'])
     else:
         model.load_state_dict(ckpt)
     logger.info(f'Successfully load model from {args.weights}')
@@ -173,15 +158,6 @@ if __name__ == '__main__':
     logger.info('Start sampling...')
     os.makedirs(args.save_dir, exist_ok=True)
     logger.info(f'Samples will be saved to {args.save_dir}')
-    transforms = T.Compose([
-        T.Resize(cfg.data.img_size),
-        T.CenterCrop(cfg.data.img_size),
-        T.ToTensor(),
-        T.Normalize([0.5] * 3, [0.5] * 3),
-    ])
-    dset = ImageDir(root=args.input_dir, split='', transform=transforms)
-    if args.n_samples < len(dset):
-        dset = Subset(dataset=dset, indices=torch.arange(args.n_samples))
-    sample(dataset=dset)
+    translate()
     logger.info(f'Sampled images are saved to {args.save_dir}')
     logger.info('End of sampling')

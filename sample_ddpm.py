@@ -76,7 +76,7 @@ def sample():
     for i, bs in enumerate(folds):
         init_noise = torch.randn((micro_batch, *img_shape), device=device)
         samples = diffuser.sample(
-            model=model, init_noise=init_noise,
+            model=accelerator.unwrap_model(model), init_noise=init_noise,
             tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
         ).clamp(-1, 1)
         samples = accelerator.gather(samples)[:bs]
@@ -97,7 +97,7 @@ def sample_denoise():
     for i, bs in enumerate(folds):
         init_noise = torch.randn((micro_batch, *img_shape), device=device)
         sample_loop = diffuser.sample_loop(
-            model=model, init_noise=init_noise,
+            model=accelerator.unwrap_model(model), init_noise=init_noise,
             tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
         )
         samples = [
@@ -123,7 +123,7 @@ def sample_progressive():
     for i, bs in enumerate(folds):
         init_noise = torch.randn((micro_batch, *img_shape), device=device)
         sample_loop = diffuser.sample_loop(
-            model=model, init_noise=init_noise,
+            model=accelerator.unwrap_model(model), init_noise=init_noise,
             tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
         )
         samples = [

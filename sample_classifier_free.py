@@ -95,7 +95,7 @@ def sample():
             init_noise = torch.randn((bs, *img_shape), device=device)
             labels = torch.full((bs, ), fill_value=c, device=device)
             samples = sample_fn(
-                model=model, init_noise=init_noise, y=labels,
+                model=accelerator.unwrap_model(model), init_noise=init_noise, y=labels,
                 tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
             ).clamp(-1, 1)
             samples = accelerator.gather(samples)[:bs]

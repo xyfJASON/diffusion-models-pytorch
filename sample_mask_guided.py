@@ -100,7 +100,7 @@ def sample(dataset):
         masked_image = X * mask
         diffuser.set_mask_and_image(masked_image, mask.float())
         recX = sample_fn(
-            model=model, init_noise=init_noise,
+            model=accelerator.unwrap_model(model), init_noise=init_noise,
             tqdm_kwargs=dict(desc=f'Fold {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
         ).clamp(-1, 1)
         recX = accelerator.gather_for_metrics(recX)

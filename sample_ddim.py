@@ -87,7 +87,7 @@ def sample():
     for i, bs in enumerate(folds):
         init_noise = torch.randn((micro_batch, *img_shape), device=device)
         samples = diffuser.ddim_sample(
-            model=model, init_noise=init_noise,
+            model=accelerator.unwrap_model(model), init_noise=init_noise,
             tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
         ).clamp(-1, 1)
         samples = accelerator.gather(samples)[:bs]
@@ -114,7 +114,7 @@ def sample_interpolate():
         z2 = torch.randn((micro_batch, *img_shape), device=device)
         samples = torch.stack([
             diffuser.ddim_sample(
-                model=model, init_noise=slerp(t, z1, z2),
+                model=accelerator.unwrap_model(model), init_noise=slerp(t, z1, z2),
                 tqdm_kwargs=dict(
                     desc=f'Fold {i}/{len(folds)}, interp {j}/{args.n_interpolate}',
                     disable=not accelerator.is_main_process,
@@ -144,11 +144,11 @@ def sample_reconstruction(dataset):
     for i, X in enumerate(dataloader):
         X = X[0].float() if isinstance(X, (tuple, list)) else X.float()
         noise = diffuser.ddim_sample_inversion(
-            model=model, img=X,
+            model=accelerator.unwrap_model(model), img=X,
             tqdm_kwargs=dict(desc=f'img2noise {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
         )
         recX = diffuser.ddim_sample(
-            model=model, init_noise=noise,
+            model=accelerator.unwrap_model(model), init_noise=noise,
             tqdm_kwargs=dict(desc=f'noise2img {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
         )
         X = accelerator.gather_for_metrics(X)

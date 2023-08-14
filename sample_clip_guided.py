@@ -89,7 +89,7 @@ def sample():
     for i, bs in enumerate(folds):
         init_noise = torch.randn((micro_batch, *img_shape), device=device)
         samples = sample_fn(
-            model=model, init_noise=init_noise,
+            model=accelerator.unwrap_model(model), init_noise=init_noise,
             tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process)
         ).clamp(-1, 1)
         samples = accelerator.gather(samples)[:bs]
