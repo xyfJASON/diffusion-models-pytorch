@@ -10,13 +10,10 @@ Implement Diffusion Models with PyTorch.
 - [x] DDIM
 - [x] Guidance
 - [x] Classifier-Free Guidance
-
+- [x] DDPM-IP
 - Applications
-
   - [x] CLIP Guidance
-
   - [x] Mask Guidance
-
   - [x] ILVR
   - [x] SDEdit
 
