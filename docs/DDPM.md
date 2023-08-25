@@ -77,17 +77,17 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
     <td align="center"><b>9.4515 ± 0.1179</b></td>
   </tr>
   <tr>
-    <td align="center">100 (10x faster)</td>
+    <td align="center">100</td>
     <td align="center">46.5454</td>
     <td align="center">8.7223 ± 0.0923</td>
   </tr>
   <tr>
-    <td align="center">50 (20x faster)</td>
+    <td align="center">50</td>
     <td align="center">85.2221</td>
     <td align="center">6.3863 ± 0.0894</td>
   </tr>
   <tr>
-    <td align="center">10 (100x faster)</td>
+    <td align="center">10</td>
     <td align="center">266.7540</td>
     <td align="center">1.5870 ± 0.0092</td>
   </tr>
@@ -98,17 +98,17 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
     <td align="center">9.0118 ± 0.0968</td>
   </tr>
   <tr>
-    <td align="center">100 (10x faster)</td>
+    <td align="center">100</td>
     <td align="center">11.2191</td>
     <td align="center">8.6237 ± 0.0921</td>
   </tr>
   <tr>
-    <td align="center">50 (20x faster)</td>
+    <td align="center">50</td>
     <td align="center">15.0471</td>
     <td align="center">8.4077 ± 0.1623</td>
   </tr>
   <tr>
-    <td align="center">10 (100x faster)</td>
+    <td align="center">10</td>
     <td align="center">41.04793</td>
     <td align="center">7.1373 ± 0.0801</td>
   </tr>
@@ -125,7 +125,21 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
     <td align="center">14.3750</td>
     <td align="center">7.7426 ± 0.0759</td>
   </tr>
+  <tr>
+    <td align="center" rowspan="2">pred-v</td>
+    <td align="center">fixed-large</td>
+    <td align="center">1000</td>
+    <td align="center">3.9703</td>
+    <td align="center">9.0253 ± 0.1084</td>
+  </tr>
+  <tr>
+    <td align="center">fixed-small</td>
+    <td align="center">1000</td>
+    <td align="center">6.6707</td>
+    <td align="center">8.6282 ± 0.1107</td>
+  </tr>
  </table>
+
 
 
 

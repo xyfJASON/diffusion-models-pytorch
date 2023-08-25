@@ -40,7 +40,7 @@ class DDPM:
             beta_start: Starting beta value.
             beta_end: Ending beta value.
             betas: A 1-D Tensor of pre-defined beta schedule. If provided, arguments `beta_*` will be ignored.
-            objective: Prediction objective of the model. Options: 'pred_eps', 'pred_x0'.
+            objective: Prediction objective of the model. Options: 'pred_eps', 'pred_x0', 'pred_v'.
 
             var_type: Type of variance of the reverse process.
                       Options: 'fixed_large', 'fixed_small', 'learned_range'.
@@ -56,7 +56,7 @@ class DDPM:
                       This argument doesn't affect training and can be overridden by `set_skip_seq()`.
 
         """
-        assert objective in ['pred_eps', 'pred_x0']
+        assert objective in ['pred_eps', 'pred_x0', 'pred_v']
         assert var_type in ['fixed_small', 'fixed_large', 'learned_range']
         self.total_steps = total_steps
         self.objective = objective
@@ -106,6 +106,16 @@ class DDPM:
         elif self.objective == 'pred_x0':
             pred_x0 = model(xt, t, **model_kwargs)
             return F.mse_loss(pred_x0, x0)
+        elif self.objective == 'pred_v':
+            pred_v = model(xt, t, **model_kwargs)
+            sqrt_alphas_cumprod_t = self.alphas_cumprod[t] ** 0.5
+            sqrt_one_minus_alphas_cumprod = (1. - self.alphas_cumprod[t]) ** 0.5
+            while sqrt_alphas_cumprod_t.ndim < x0.ndim:
+                sqrt_alphas_cumprod_t = sqrt_alphas_cumprod_t.unsqueeze(-1)
+            while sqrt_one_minus_alphas_cumprod.ndim < x0.ndim:
+                sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod.unsqueeze(-1)
+            v = sqrt_alphas_cumprod_t * eps - sqrt_one_minus_alphas_cumprod * x0
+            return F.mse_loss(pred_v, v)
         else:
             raise ValueError(f'Objective {self.objective} is not supported.')
 
@@ -136,6 +146,11 @@ class DDPM:
         sqrt_recip_alphas_cumprod_t = (1. / self.alphas_cumprod[t]) ** 0.5
         sqrt_recipm1_alphas_cumprod_t = (1. / self.alphas_cumprod[t] - 1.) ** 0.5
         return sqrt_recip_alphas_cumprod_t * xt - sqrt_recipm1_alphas_cumprod_t * eps
+
+    def pred_x0_from_v(self, xt: Tensor, t: int, v: Tensor):
+        sqrt_alphas_cumprod_t = self.alphas_cumprod[t] ** 0.5
+        sqrt_one_minus_alphas_cumprod = (1. - self.alphas_cumprod[t]) ** 0.5
+        return sqrt_alphas_cumprod_t * xt - sqrt_one_minus_alphas_cumprod * v
 
     def p_sample(
             self, model_output: Tensor, xt: Tensor, t: int, t_prev: int,
@@ -174,6 +189,9 @@ class DDPM:
             pred_x0 = self.pred_x0_from_eps(xt, t, pred_eps)
         elif self.objective == 'pred_x0':
             pred_x0 = model_output
+        elif self.objective == 'pred_v':
+            pred_v = model_output
+            pred_x0 = self.pred_x0_from_v(xt, t, pred_v)
         else:
             raise ValueError
         if clip_denoised:
