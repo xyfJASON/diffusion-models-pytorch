@@ -85,7 +85,7 @@ From left to right: $s=0$ (unconditional), $s=1.0$ (non-guided conditional), $s=
 
 **Samples with different guidance scales on ImageNet 256x256**:
 
-The pretrained models are sourced from [openai/guided-diffusion](https://github.com/openai/guided-diffusion). Note that these models were initially designed for classifier guidance and thus are either conditional-only or unconditional-only. However, to facilitate classifier-free guidance, it would be more convenient if the model can handle both conditional and unconditional cases. To address this, I define a new class [UNetCombined](../models/openai/guided_diffusion/unet_combined.py), which combines the conditional-only and unconditional-only models into a single model. Also, we need to combine the pretrained weights for loading, which can be done by the following script:
+The pretrained models are sourced from [openai/guided-diffusion](https://github.com/openai/guided-diffusion). Note that these models were initially designed for classifier guidance and thus are either conditional-only or unconditional-only. However, to facilitate classifier-free guidance, it would be more convenient if the model can handle both conditional and unconditional cases. To address this, I define a new class [UNetCombined](../models/adm/unet_combined.py), which combines the conditional-only and unconditional-only models into a single model. Also, we need to combine the pretrained weights for loading, which can be done by the following script:
 
 ```python
 import yaml
@@ -93,7 +93,7 @@ import torch
 from models.openai.guided_diffusion.unet_combined import UNetCombined
 
 
-config_path = './configs/openai/guided-diffusion/imagenet_256_cond.yaml'
+config_path = './configs/openai/guided-diffusion/256x256_diffusion.yaml'
 weight_cond_path = './weights/openai/guided-diffusion/256x256_diffusion.pt'
 weight_uncond_path = './weights/openai/guided-diffusion/256x256_diffusion_uncond.pt'
 save_path = './weights/openai/guided-diffusion/256x256_diffusion_combined.pt'

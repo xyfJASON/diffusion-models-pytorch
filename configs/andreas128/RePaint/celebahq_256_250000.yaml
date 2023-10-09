@@ -1,19 +1,19 @@
 seed: 2022
 
 data:
-  name: CelebA-HQ
-  dataroot: /data/CelebA-HQ/
-  img_size: 256
+  target: datasets.celebahq.CelebAHQ
+  params:
+    root: ~/data/CelebA-HQ/
+    img_size: 256
   img_channels: 3
 
 dataloader:
   num_workers: 4
   pin_memory: true
   prefetch_factor: 2
-  micro_batch: 0
 
 model:
-  target: models.openai.guided_diffusion.unet.UNetModel
+  target: models.adm.unet.UNetModel
   params:
     image_size: 256
     in_channels: 3

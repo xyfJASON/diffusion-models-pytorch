@@ -1,14 +1,13 @@
 import os
 import argparse
 from functools import partial
-from yacs.config import CfgNode as CN
+from omegaconf import OmegaConf
 
 import torch
+import accelerate
 import torchvision.transforms as T
 from torchvision.utils import save_image
 from torch.utils.data import DataLoader, Subset
-
-import accelerate
 
 import diffusions
 from datasets import ImageDir
@@ -75,66 +74,29 @@ def get_parser():
     return parser
 
 
-@torch.no_grad()
-def sample(dataset):
-    dataset = DatasetWithMask(
-        dataset=dataset,
-        mask_type='brush',
-    )
-    dataloader = DataLoader(
-        dataset=dataset,
-        batch_size=args.micro_batch,
-        num_workers=cfg.dataloader.num_workers,
-        pin_memory=cfg.dataloader.pin_memory,
-        prefetch_factor=cfg.dataloader.prefetch_factor,
-    )
-    dataloader = accelerator.prepare(dataloader)  # type: ignore
-
-    sample_fn = diffuser.sample
-    if args.resample:
-        sample_fn = partial(diffuser.resample, resample_r=args.resample_r, resample_j=args.resample_j)
-
-    idx = 0
-    for i, (X, mask) in enumerate(dataloader):
-        init_noise = torch.randn_like(X)
-        masked_image = X * mask
-        diffuser.set_mask_and_image(masked_image, mask.float())
-        recX = sample_fn(
-            model=accelerator.unwrap_model(model), init_noise=init_noise,
-            tqdm_kwargs=dict(desc=f'Fold {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
-        ).clamp(-1, 1)
-        recX = accelerator.gather_for_metrics(recX)
-        if accelerator.is_main_process:
-            for m, x, r in zip(masked_image, X, recX):
-                m = image_norm_to_float(m).cpu()
-                x = image_norm_to_float(x).cpu()
-                r = image_norm_to_float(r).cpu()
-                save_image([m, x, r], os.path.join(args.save_dir, f'{idx}.png'), nrow=3)
-                idx += 1
-
-
-if __name__ == '__main__':
+def main():
     # PARSE ARGS AND CONFIGS
     args, unknown_args = get_parser().parse_known_args()
     unknown_args = [(a[2:] if a.startswith('--') else a) for a in unknown_args]
-    cfg = CN(new_allowed=True)
-    cfg.merge_from_file(args.config)
-    cfg.set_new_allowed(False)
-    cfg.merge_from_list(unknown_args)
-    cfg.freeze()
+    unknown_args = [f'{k}={v}' for k, v in zip(unknown_args[::2], unknown_args[1::2])]
+    conf = OmegaConf.load(args.config)
+    conf = OmegaConf.merge(conf, OmegaConf.from_dotlist(unknown_args))
 
     # INITIALIZE ACCELERATOR
     accelerator = accelerate.Accelerator()
     device = accelerator.device
     print(f'Process {accelerator.process_index} using device: {device}')
     accelerator.wait_for_everyone()
+
     # INITIALIZE LOGGER
     logger = get_logger(
         use_tqdm_handler=True,
         is_main_process=accelerator.is_main_process,
     )
+
     # SET SEED
     accelerate.utils.set_seed(args.seed, device_specific=True)
+    logger.info('=' * 19 + ' System Info ' + '=' * 18)
     logger.info(f'Number of processes: {accelerator.num_processes}')
     logger.info(f'Distributed type: {accelerator.distributed_type}')
     logger.info(f'Mixed precision: {accelerator.mixed_precision}')
@@ -142,16 +104,18 @@ if __name__ == '__main__':
     accelerator.wait_for_everyone()
 
     # BUILD DIFFUSER
-    cfg.diffusion.params.update({
-        'var_type': args.var_type or cfg.diffusion.params.var_type,
+    diffusion_params = OmegaConf.to_container(conf.diffusion.params)
+    diffusion_params.update({
+        'var_type': args.var_type or diffusion_params.get('var_type', None),
         'skip_type': None if args.skip_steps is None else args.skip_type,
         'skip_steps': args.skip_steps,
         'device': device,
     })
-    diffuser = diffusions.MaskGuided(**cfg.diffusion.params)
+    diffuser = diffusions.MaskGuided(**diffusion_params)
 
     # BUILD MODEL
-    model = instantiate_from_config(cfg.model)
+    model = instantiate_from_config(conf.model)
+
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
     if 'ema' in ckpt:
@@ -160,7 +124,9 @@ if __name__ == '__main__':
         model.load_state_dict(ckpt['model'])
     else:
         model.load_state_dict(ckpt)
+    logger.info('=' * 19 + ' Model Info ' + '=' * 19)
     logger.info(f'Successfully load model from {args.weights}')
+    logger.info('=' * 50)
 
     # PREPARE FOR DISTRIBUTED MODE AND MIXED PRECISION
     model = accelerator.prepare(model)
@@ -168,19 +134,53 @@ if __name__ == '__main__':
 
     accelerator.wait_for_everyone()
 
+    @torch.no_grad()
+    def sample():
+        # build dataset
+        if args.input_dir is None:
+            raise ValueError('input_dir must be specified when mode is reconstruction')
+        transforms = T.Compose([
+            T.Resize(conf.data.params.img_size),
+            T.CenterCrop(conf.data.params.img_size),
+            T.ToTensor(),
+            T.Normalize([0.5] * 3, [0.5] * 3),
+        ])
+        dataset = ImageDir(root=args.input_dir, transform=transforms)
+        if args.n_samples < len(dataset):
+            dataset = Subset(dataset=dataset, indices=torch.arange(args.n_samples))
+        dataset = DatasetWithMask(dataset=dataset, mask_type='brush')
+        dataloader = DataLoader(dataset=dataset, batch_size=args.micro_batch, **conf.dataloader)
+        dataloader = accelerator.prepare(dataloader)  # type: ignore
+        # sampling
+        idx = 0
+        sample_fn = diffuser.sample
+        if args.resample:
+            sample_fn = partial(diffuser.resample, resample_r=args.resample_r, resample_j=args.resample_j)
+        for i, (X, mask) in enumerate(dataloader):
+            init_noise = torch.randn_like(X)
+            masked_image = X * mask
+            diffuser.set_mask_and_image(masked_image, mask.float())
+            recX = sample_fn(
+                model=accelerator.unwrap_model(model), init_noise=init_noise,
+                tqdm_kwargs=dict(desc=f'Fold {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
+            ).clamp(-1, 1)
+            recX = accelerator.gather_for_metrics(recX)
+            if accelerator.is_main_process:
+                for m, x, r in zip(masked_image, X, recX):
+                    m = image_norm_to_float(m).cpu()
+                    x = image_norm_to_float(x).cpu()
+                    r = image_norm_to_float(r).cpu()
+                    save_image([m, x, r], os.path.join(args.save_dir, f'{idx}.png'), nrow=3)
+                    idx += 1
+
     # START SAMPLING
     logger.info('Start sampling...')
     os.makedirs(args.save_dir, exist_ok=True)
     logger.info(f'Samples will be saved to {args.save_dir}')
-    transforms = T.Compose([
-        T.Resize(cfg.data.img_size),
-        T.CenterCrop(cfg.data.img_size),
-        T.ToTensor(),
-        T.Normalize([0.5] * 3, [0.5] * 3),
-    ])
-    dset = ImageDir(root=args.input_dir, split='', transform=transforms)
-    if args.n_samples < len(dset):
-        dset = Subset(dataset=dset, indices=torch.arange(args.n_samples))
-    sample(dataset=dset)
+    sample()
     logger.info(f'Sampled images are saved to {args.save_dir}')
     logger.info('End of sampling')
+
+
+if __name__ == '__main__':
+    main()

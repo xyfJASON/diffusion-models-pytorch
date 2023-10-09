@@ -16,6 +16,7 @@ Implement Diffusion Models with PyTorch.
   - [x] Mask Guidance
   - [x] ILVR
   - [x] SDEdit
+  - [x] DDIB
 
 <br/>
 
@@ -39,50 +40,50 @@ All the checkpoints and training logs are stored in [xyfJASON/Diffusion-Models-I
 
 ### Loading models and weights from other repositories
 
-Training a diffusion model on a large-scale dataset from scratch is time-consuming, especially with limited devices. Thus, this repository supports loading models and weights from other open source repositories, which are listed below.
+Training a diffusion model on a large-scale dataset from scratch is time-consuming, especially with limited devices. Thus, this repository supports loading models and weights from other open source repositories, as listed below.
 
 <table style="text-align: center">
     <tr>
-        <th>Model Architecture</th>
+        <th>Model Arch.</th>
         <th>Dataset</th>
-        <th>Original Repository</th>
+        <th>Original Repo</th>
         <th>Config file</th>
     </tr>
     <tr>
-        <td rowspan="2">PyTorch diffusion models converted from TensorFlow by pesser</td>
+        <td rowspan="2">UNet by pesser</td>
         <td>CelebA-HQ (256x256)</td>
         <td><a href="https://github.com/pesser/pytorch_diffusion">pesser/pytorch_diffusion</a></td>
-        <td><a href="./configs/pesser/pytorch_diffusion/celebahq.yaml">config</a></td>
+        <td><a href="./configs/pesser/pytorch_diffusion/ema_diffusion_celebahq_model-560000.yaml">config</a></td>
     </tr>
     <tr>
         <td>LSUN-Church (256x256)</td>
         <td><a href="https://github.com/pesser/pytorch_diffusion">pesser/pytorch_diffusion</a></td>
-        <td><a href="./configs/pesser/pytorch_diffusion/lsun_church.yaml">config</a></td>
+        <td><a href="./configs/pesser/pytorch_diffusion/ema_diffusion_lsun_church_model-4432000.yaml">config</a></td>
     </tr>
     <tr>
-        <td rowspan="4">ADM (guided diffusion models) by openai</td>
+        <td rowspan="4">ADM by openai</td>
         <td>ImageNet (unconditional, 256x256)</td>
         <td><a href="https://github.com/openai/guided-diffusion">openai/guided-diffusion</a></td>
-        <td><a href="./configs/openai/guided-diffusion/imagenet_256_uncond.yaml">config</a></td>
+        <td><a href="./configs/openai/guided-diffusion/256x256_diffusion_uncond.yaml">config</a></td>
     </tr>
     <tr>
         <td>ImageNet (conditional, 256x256)</td>
         <td><a href="https://github.com/openai/guided-diffusion">openai/guided-diffusion</a></td>
-        <td><a href="./configs/openai/guided-diffusion/imagenet_256_cond.yaml">config</a></td>
+        <td><a href="./configs/openai/guided-diffusion/256x256_diffusion.yaml">config</a></td>
     </tr>
     <tr>
         <td>AFHQ-Dog (256x256)</td>
         <td><a href="https://github.com/jychoi118/ilvr_adm">jychoi118/ilvr_adm</a></td>
-        <td><a href="./configs/openai/guided-diffusion/afhqdog_jychoi118_ilvr.yaml">config</a></td>
+        <td><a href="./configs/jychoi118/ilvr_adm/afhqdog_p2.yaml">config</a></td>
     </tr>
     <tr>
         <td>CelebA-HQ (256x256)</td>
         <td><a href="https://github.com/andreas128/RePaint">andreas128/RePaint</a></td>
-        <td><a href="./configs/openai/guided-diffusion/celebahq_andreas128_RePaint.yaml">config</a></td>
+        <td><a href="./configs/andreas128/RePaint/celebahq_256_250000.yaml">config</a></td>
     </tr>
 </table>
 
-
+The configuration files are located at `./configs/<github username>/<repo name>/<weights filename>.yaml`, so it should be easy to find the corresponding weights.
 
 <br/>
 
@@ -105,6 +106,7 @@ This section provides a preview of the results achieved by the implemented metho
 </p>
 
 
+
 ### DDIM
 
 [paper](https://arxiv.org/abs/2010.02502) | [official repo](https://github.com/ermongroup/ddim)
@@ -113,6 +115,7 @@ This section provides a preview of the results achieved by the implemented metho
   <img src="./assets/ddim-cifar10.png" width=39% />
   <img src="./assets/ddim-cifar10-interpolate.png" width=50% />
 </p>
+
 
 
 ### Classifier-Free Guidance
@@ -124,11 +127,13 @@ This section provides a preview of the results achieved by the implemented metho
 </p>
 
 
+
 ### CLIP Guidance
 
 <p align="center">
   <img src="./assets/clip-guidance-celebahq.png" width=80% />
 </p>
+
 
 
 ### Mask Guidance
@@ -150,6 +155,7 @@ This section provides a preview of the results achieved by the implemented metho
 </p>
 
 
+
 ### SDEdit
 
 [paper](https://arxiv.org/abs/2108.01073) | [website](https://sde-image-editing.github.io/) | [official repo](https://github.com/ermongroup/SDEdit)
@@ -158,6 +164,15 @@ This section provides a preview of the results achieved by the implemented metho
   <img src="./assets/sdedit.png" width=55% />
 </p>
 
+
+
+### DDIB
+
+[paper](https://arxiv.org/abs/2203.08382) | [website](https://suxuann.github.io/ddib/) | [official repo](https://github.com/suxuann/ddib)
+
+<p align="center">
+  <img src="./assets/ddib-imagenet.png" width=80% />
+</p>
 
 <br/>
 
@@ -170,7 +185,6 @@ I use the same model in all tests, which is trained following the standard DDPM.
 <p align="center">
   <img src="./assets/fidelity-speed-visualization.png" width=80% />
 </p>
-
 
 Notes:
 

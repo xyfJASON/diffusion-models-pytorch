@@ -2,12 +2,11 @@ import os
 import math
 import argparse
 from functools import partial
-from yacs.config import CfgNode as CN
+from omegaconf import OmegaConf
 
 import torch
-from torchvision.utils import save_image
-
 import accelerate
+from torchvision.utils import save_image
 
 import diffusions
 from utils.logger import get_logger
@@ -70,64 +69,29 @@ def get_parser():
     return parser
 
 
-@torch.no_grad()
-def sample():
-    img_shape = (cfg.data.img_channels, cfg.data.img_size, cfg.data.img_size)
-    micro_batch = min(args.micro_batch, math.ceil(args.n_samples_each_class / accelerator.num_processes))
-    batch_size = micro_batch * accelerator.num_processes
-
-    sample_fn = diffuser.sample
-    if args.ddim:
-        sample_fn = partial(diffuser.ddim_sample, eta=args.ddim_eta)
-
-    class_ids = args.class_ids
-    if args.class_ids is None:
-        class_ids = range(cfg.data.num_classes)
-    logger.info(f'Will sample {args.n_samples_each_class} images '
-                f'for each of the following class IDs: {class_ids}')
-
-    for c in class_ids:
-        os.makedirs(os.path.join(args.save_dir, f'class{c}'), exist_ok=True)
-        idx = 0
-        logger.info(f'Sampling class {c}')
-        folds = amortize(args.n_samples_each_class, batch_size)
-        for i, bs in enumerate(folds):
-            init_noise = torch.randn((bs, *img_shape), device=device)
-            labels = torch.full((bs, ), fill_value=c, device=device)
-            samples = sample_fn(
-                model=accelerator.unwrap_model(model), init_noise=init_noise, y=labels,
-                tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
-            ).clamp(-1, 1)
-            samples = accelerator.gather(samples)[:bs]
-            if accelerator.is_main_process:
-                for x in samples:
-                    x = image_norm_to_float(x).cpu()
-                    save_image(x, os.path.join(args.save_dir, f'class{c}', f'{idx}.png'), nrow=1)
-                    idx += 1
-
-
 if __name__ == '__main__':
     # PARSE ARGS AND CONFIGS
     args, unknown_args = get_parser().parse_known_args()
     unknown_args = [(a[2:] if a.startswith('--') else a) for a in unknown_args]
-    cfg = CN(new_allowed=True)
-    cfg.merge_from_file(args.config)
-    cfg.set_new_allowed(False)
-    cfg.merge_from_list(unknown_args)
-    cfg.freeze()
+    unknown_args = [f'{k}={v}' for k, v in zip(unknown_args[::2], unknown_args[1::2])]
+    conf = OmegaConf.load(args.config)
+    conf = OmegaConf.merge(conf, OmegaConf.from_dotlist(unknown_args))
 
     # INITIALIZE ACCELERATOR
     accelerator = accelerate.Accelerator()
     device = accelerator.device
     print(f'Process {accelerator.process_index} using device: {device}')
     accelerator.wait_for_everyone()
+
     # INITIALIZE LOGGER
     logger = get_logger(
         use_tqdm_handler=True,
         is_main_process=accelerator.is_main_process,
     )
+
     # SET SEED
     accelerate.utils.set_seed(args.seed, device_specific=True)
+    logger.info('=' * 19 + ' System Info ' + '=' * 18)
     logger.info(f'Number of processes: {accelerator.num_processes}')
     logger.info(f'Distributed type: {accelerator.distributed_type}')
     logger.info(f'Mixed precision: {accelerator.mixed_precision}')
@@ -135,16 +99,18 @@ if __name__ == '__main__':
     accelerator.wait_for_everyone()
 
     # BUILD DIFFUSER
-    cfg.diffusion.params.update({
+    diffusion_params = OmegaConf.to_container(conf.diffusion.params)
+    diffusion_params.update({
         'skip_type': None if args.skip_steps is None else args.skip_type,
         'skip_steps': args.skip_steps,
         'guidance_scale': args.guidance_scale,
         'device': device,
     })
-    diffuser = diffusions.classifier_free.ClassifierFree(**cfg.diffusion.params)
+    diffuser = diffusions.classifier_free.ClassifierFree(**diffusion_params)
 
     # BUILD MODEL
-    model = instantiate_from_config(cfg.model)
+    model = instantiate_from_config(conf.model)
+
     # LOAD WEIGHTS
     ckpt = torch.load(args.weights, map_location='cpu')
     if 'ema' in ckpt:
@@ -153,13 +119,50 @@ if __name__ == '__main__':
         model.load_state_dict(ckpt['model'])
     else:
         model.load_state_dict(ckpt)
+    logger.info('=' * 19 + ' Model Info ' + '=' * 19)
     logger.info(f'Successfully load model from {args.weights}')
+    logger.info('=' * 50)
 
     # PREPARE FOR DISTRIBUTED MODE AND MIXED PRECISION
     model = accelerator.prepare(model)
     model.eval()
 
     accelerator.wait_for_everyone()
+
+    @torch.no_grad()
+    def sample():
+        img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
+        micro_batch = min(args.micro_batch, math.ceil(args.n_samples_each_class / accelerator.num_processes))
+        batch_size = micro_batch * accelerator.num_processes
+
+        sample_fn = diffuser.sample
+        if args.ddim:
+            sample_fn = partial(diffuser.ddim_sample, eta=args.ddim_eta)
+
+        class_ids = args.class_ids
+        if args.class_ids is None:
+            class_ids = range(conf.data.num_classes)
+        logger.info(f'Will sample {args.n_samples_each_class} images '
+                    f'for each of the following class IDs: {class_ids}')
+
+        for c in class_ids:
+            os.makedirs(os.path.join(args.save_dir, f'class{c}'), exist_ok=True)
+            idx = 0
+            logger.info(f'Sampling class {c}')
+            folds = amortize(args.n_samples_each_class, batch_size)
+            for i, bs in enumerate(folds):
+                init_noise = torch.randn((bs, *img_shape), device=device)
+                labels = torch.full((bs, ), fill_value=c, device=device)
+                samples = sample_fn(
+                    model=accelerator.unwrap_model(model), init_noise=init_noise, y=labels,
+                    tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
+                ).clamp(-1, 1)
+                samples = accelerator.gather(samples)[:bs]
+                if accelerator.is_main_process:
+                    for x in samples:
+                        x = image_norm_to_float(x).cpu()
+                        save_image(x, os.path.join(args.save_dir, f'class{c}', f'{idx}.png'), nrow=1)
+                        idx += 1
 
     # START SAMPLING
     logger.info('Start sampling...')

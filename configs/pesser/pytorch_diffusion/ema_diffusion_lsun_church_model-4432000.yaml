@@ -1,19 +1,20 @@
 seed: 2022
 
 data:
-  name: LSUN-Church
-  dataroot: ~
-  img_size: 256
+  target: datasets.lsun.LSUN
+  params:
+    dataroot: ~/data/LSUN
+    label: church
+    img_size: 256
   img_channels: 3
 
 dataloader:
   num_workers: 4
   pin_memory: true
   prefetch_factor: 2
-  micro_batch: 0
 
 model:
-  target: models.pesser.pytorch_diffusion.model.Model
+  target: models.pesser.model.Model
   params:
     resolution: 256
     in_channels: 3

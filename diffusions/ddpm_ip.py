@@ -7,24 +7,7 @@ from diffusions import DDPM
 
 
 class DDPM_IP(DDPM):
-    def __init__(
-            self,
-            total_steps: int = 1000,
-            beta_schedule: str = 'linear',
-            beta_start: float = 0.0001,
-            beta_end: float = 0.02,
-            betas: Tensor = None,
-            objective: str = 'pred_eps',
-            gamma: float = 0.1,
-
-            var_type: str = 'fixed_large',
-            clip_denoised: bool = True,
-            skip_type: str = None,
-            skip_steps: int = 100,
-            skip_seq: Tensor = None,
-
-            device: torch.device = 'cpu',
-    ):
+    def __init__(self, gamma: float = 0.1, *args, **kwargs):
         """ Denoising Diffusion Probabilistic Models with Input Perturbation.
 
         Perturb the input (xt) during training to simulate the gap between training and testing.
@@ -34,20 +17,7 @@ class DDPM_IP(DDPM):
             gamma: Perturbation strength.
 
         """
-        super().__init__(
-            total_steps=total_steps,
-            beta_schedule=beta_schedule,
-            beta_start=beta_start,
-            beta_end=beta_end,
-            betas=betas,
-            objective=objective,
-            var_type=var_type,
-            clip_denoised=clip_denoised,
-            skip_type=skip_type,
-            skip_steps=skip_steps,
-            skip_seq=skip_seq,
-            device=device,
-        )
+        super().__init__(*args, **kwargs)
         self.gamma = gamma
 
     def loss_func(self, model: nn.Module, x0: Tensor, t: Tensor, eps: Tensor = None, **model_kwargs):

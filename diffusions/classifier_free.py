@@ -325,46 +325,6 @@ class ClassifierFree:
             sample = mean + torch.sqrt(var) * torch.randn_like(xt)
         return {'sample': sample, 'pred_x0': pred_x0}
 
-    def ddim_sample_loop(
-            self, model: nn.Module, init_noise: Tensor,
-            clip_denoised: bool = None, guidance_scale: float = None, eta: float = 0.0,
-            tqdm_kwargs: Dict = None, **model_kwargs,
-    ):
-        assert self.cond_kwarg in model_kwargs.keys(), f'Missing the condition key: {self.cond_kwarg}'
-        if tqdm_kwargs is None:
-            tqdm_kwargs = dict()
-        uncond_model_kwargs = model_kwargs.copy()
-        uncond_model_kwargs[self.cond_kwarg] = None
-
-        img = init_noise
-        skip_seq = self.skip_seq.tolist()
-        skip_seq_prev = [-1] + self.skip_seq[:-1].tolist()
-        pbar = tqdm.tqdm(total=len(skip_seq), **tqdm_kwargs)
-        for t, t_prev in zip(reversed(skip_seq), reversed(skip_seq_prev)):
-            t_batch = torch.full((img.shape[0], ), t, device=self.device, dtype=torch.long)
-            model_output_cond = model(img, t_batch, **model_kwargs)
-            model_output_uncond = model(img, t_batch, **uncond_model_kwargs)
-            out = self.ddim_p_sample(
-                model_output_cond, model_output_uncond, img, t, t_prev,
-                clip_denoised, guidance_scale, eta,
-            )
-            img = out['sample']
-            pbar.update(1)
-            yield out
-        pbar.close()
-
-    def ddim_sample(
-            self, model: nn.Module, init_noise: Tensor,
-            clip_denoised: bool = None, guidance_scale: float = None, eta: float = 0.0,
-            tqdm_kwargs: Dict = None, **model_kwargs,
-    ):
-        sample = None
-        for out in self.ddim_sample_loop(
-                model, init_noise, clip_denoised, guidance_scale, eta, tqdm_kwargs, **model_kwargs,
-        ):
-            sample = out['sample']
-        return sample
-
     def ddim_p_sample_inversion(
             self, model_output_cond: Tensor, model_output_uncond: Tensor, xt: Tensor, t: int, t_next: int,
             clip_denoised: bool = None, guidance_scale: float = None,
@@ -404,6 +364,46 @@ class ClassifierFree:
         sample = (torch.sqrt(alphas_cumprod_t_next) * pred_x0 +
                   torch.sqrt(1. - alphas_cumprod_t_next) * pred_eps)
         return {'sample': sample, 'pred_x0': pred_x0}
+
+    def ddim_sample_loop(
+            self, model: nn.Module, init_noise: Tensor,
+            clip_denoised: bool = None, guidance_scale: float = None, eta: float = 0.0,
+            tqdm_kwargs: Dict = None, **model_kwargs,
+    ):
+        assert self.cond_kwarg in model_kwargs.keys(), f'Missing the condition key: {self.cond_kwarg}'
+        if tqdm_kwargs is None:
+            tqdm_kwargs = dict()
+        uncond_model_kwargs = model_kwargs.copy()
+        uncond_model_kwargs[self.cond_kwarg] = None
+
+        img = init_noise
+        skip_seq = self.skip_seq.tolist()
+        skip_seq_prev = [-1] + self.skip_seq[:-1].tolist()
+        pbar = tqdm.tqdm(total=len(skip_seq), **tqdm_kwargs)
+        for t, t_prev in zip(reversed(skip_seq), reversed(skip_seq_prev)):
+            t_batch = torch.full((img.shape[0], ), t, device=self.device, dtype=torch.long)
+            model_output_cond = model(img, t_batch, **model_kwargs)
+            model_output_uncond = model(img, t_batch, **uncond_model_kwargs)
+            out = self.ddim_p_sample(
+                model_output_cond, model_output_uncond, img, t, t_prev,
+                clip_denoised, guidance_scale, eta,
+            )
+            img = out['sample']
+            pbar.update(1)
+            yield out
+        pbar.close()
+
+    def ddim_sample(
+            self, model: nn.Module, init_noise: Tensor,
+            clip_denoised: bool = None, guidance_scale: float = None, eta: float = 0.0,
+            tqdm_kwargs: Dict = None, **model_kwargs,
+    ):
+        sample = None
+        for out in self.ddim_sample_loop(
+                model, init_noise, clip_denoised, guidance_scale, eta, tqdm_kwargs, **model_kwargs,
+        ):
+            sample = out['sample']
+        return sample
 
     def ddim_sample_inversion_loop(
             self, model: nn.Module, img: Tensor,

@@ -1,9 +1,10 @@
 seed: 2022
 
 data:
-  name: CIFAR-10
-  dataroot: /data/CIFAR-10/
-  img_size: 32
+  target: datasets.cifar10.CIFAR10
+  params:
+    root: ~/data/CIFAR-10/
+    img_size: 32
   img_channels: 3
   num_classes: 10
 
@@ -11,7 +12,6 @@ dataloader:
   num_workers: 4
   pin_memory: true
   prefetch_factor: 2
-  micro_batch: 0
 
 model:
   target: models.unet_categorial_adagn.UNetCategorialAdaGN
@@ -42,6 +42,7 @@ diffusion:
 train:
   n_steps: 800000
   batch_size: 128
+  micro_batch: 0
   clip_grad_norm: 1.0
   print_freq: 400
   save_freq: 10000

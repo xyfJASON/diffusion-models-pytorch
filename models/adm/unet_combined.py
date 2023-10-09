@@ -9,7 +9,7 @@ class UNetCombined(nn.Module):
     The guided diffusion models proposed by OpenAI are trained to be either conditional or unconditional,
     leading to difficulties if we want to use their pretrained models in classifier-free guidance. This
     class wraps a conditional model and an unconditional model, and decides which one to use based on the
-    the input class label.
+    input class label.
 
     """
     def __init__(self, *args, **kwargs):

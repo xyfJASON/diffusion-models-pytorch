@@ -1,10 +1,10 @@
 import os
 import sys
+import tqdm
 import torch
 import shutil
 import datetime
 import importlib
-from yacs.config import CfgNode as CN
 
 
 def check_freq(freq: int, step: int):
@@ -19,21 +19,21 @@ def get_time_str():
 def image_float_to_uint8(image: torch.Tensor):
     """ [0, 1] -> [0, 255] """
     assert image.dtype == torch.float32
-    assert (0 <= image).all() and (image <= 1).all()
+    assert torch.ge(image, 0).all() and torch.le(image, 1).all()
     return (image * 255).to(dtype=torch.uint8)
 
 
 def image_norm_to_float(image: torch.Tensor):
     """ [-1, 1] -> [0, 1] """
     assert image.dtype == torch.float32
-    assert (-1 <= image).all() and (image <= 1).all()
+    assert torch.ge(image, -1).all() and torch.le(image, 1).all()
     return (image + 1) / 2
 
 
 def image_norm_to_uint8(image: torch.Tensor):
     """ [-1, 1] -> [0, 255] """
     assert image.dtype == torch.float32
-    assert (-1 <= image).all() and (image <= 1).all()
+    assert torch.ge(image, -1).all() and torch.le(image, 1).all()
     return ((image + 1) / 2 * 255).to(dtype=torch.uint8)
 
 
@@ -41,6 +41,12 @@ def amortize(n_samples: int, batch_size: int):
     k = n_samples // batch_size
     r = n_samples % batch_size
     return k * [batch_size] if r == 0 else k * [batch_size] + [r]
+
+
+def get_data_generator(dataloader, tqdm_kwargs):
+    while True:
+        for batch in tqdm.tqdm(dataloader, **tqdm_kwargs):
+            yield batch
 
 
 def find_resume_checkpoint(exp_dir: str, resume: str):
@@ -61,15 +67,15 @@ def find_resume_checkpoint(exp_dir: str, resume: str):
     return ckpt_path
 
 
-def instantiate_from_config(cfg: CN):
-    module, cls = cfg['target'].rsplit('.', 1)
+def instantiate_from_config(conf, **extra_params):
+    module, cls = conf['target'].rsplit('.', 1)
     cls = getattr(importlib.import_module(module, package=None), cls)
-    return cls(**cfg.get('params', dict()))
+    return cls(**conf.get('params', dict()), **extra_params)
 
 
 def create_exp_dir(
         exp_dir: str,
-        cfg_dump: str,
+        conf_yaml: str,
         exist_ok: bool = False,
         time_str: str = None,
         no_interaction: bool = False,
@@ -86,7 +92,7 @@ def create_exp_dir(
     os.makedirs(os.path.join(exp_dir, 'ckpt'), exist_ok=True)
     os.makedirs(os.path.join(exp_dir, 'samples'), exist_ok=True)
     with open(os.path.join(exp_dir, f'config-{time_str}.yaml'), 'w') as f:
-        f.write(cfg_dump)
+        f.write(conf_yaml)
 
 
 def query_yes_no(question: str, default: str = "yes"):

@@ -73,6 +73,9 @@ class DDIM(DDPM):
             pred_x0 = self.pred_x0_from_eps(xt, t, pred_eps)
         elif self.objective == 'pred_x0':
             pred_x0 = model_output
+        elif self.objective == 'pred_v':
+            pred_v = model_output
+            pred_x0 = self.pred_x0_from_v(xt, t, pred_v)
         else:
             raise ValueError
         if clip_denoised:
@@ -89,6 +92,45 @@ class DDIM(DDPM):
             sample = mean
         else:
             sample = mean + torch.sqrt(var) * torch.randn_like(xt)
+        return {'sample': sample, 'pred_x0': pred_x0}
+
+    def ddim_p_sample_inversion(
+            self, model_output: Tensor, xt: Tensor, t: int, t_next: int,
+            clip_denoised: bool = None, eta: float = None,
+    ):
+        """ Sample x{t+1} from xt, only valid for DDIM (eta=0) """
+        if eta is None:
+            eta = self.eta
+        if eta != 0.:
+            raise ValueError('DDIM inversion is only valid when eta=0')
+        if clip_denoised is None:
+            clip_denoised = self.clip_denoised
+
+        # Prepare alphas, betas and other parameters
+        alphas_cumprod_t_next = self.alphas_cumprod[t_next] if t_next < self.total_steps else torch.tensor(0.0)
+
+        # Process model's output
+        if model_output.shape[1] > xt.shape[1]:
+            model_output, _ = torch.split(model_output, xt.shape[1], dim=1)
+
+        # Calculate the predicted x0 and predicted eps
+        if self.objective == 'pred_eps':
+            pred_eps = model_output
+            pred_x0 = self.pred_x0_from_eps(xt, t, pred_eps)
+        elif self.objective == 'pred_x0':
+            pred_x0 = model_output
+        elif self.objective == 'pred_v':
+            pred_v = model_output
+            pred_x0 = self.pred_x0_from_v(xt, t, pred_v)
+        else:
+            raise ValueError
+        if clip_denoised:
+            pred_x0.clamp_(-1., 1.)
+        pred_eps = self.pred_eps_from_x0(xt, t, pred_x0)
+
+        # Calculate x{t+1}
+        sample = (torch.sqrt(alphas_cumprod_t_next) * pred_x0 +
+                  torch.sqrt(1. - alphas_cumprod_t_next) * pred_eps)
         return {'sample': sample, 'pred_x0': pred_x0}
 
     def ddim_sample_loop(
@@ -120,41 +162,6 @@ class DDIM(DDPM):
         for out in self.ddim_sample_loop(model, init_noise, clip_denoised, eta, tqdm_kwargs, **model_kwargs):
             sample = out['sample']
         return sample
-
-    def ddim_p_sample_inversion(
-            self, model_output: Tensor, xt: Tensor, t: int, t_next: int,
-            clip_denoised: bool = None, eta: float = None,
-    ):
-        """ Sample x{t+1} from xt, only valid for DDIM (eta=0) """
-        if eta is None:
-            eta = self.eta
-        assert eta == 0., 'DDIM inversion is only valid when eta=0'
-        if clip_denoised is None:
-            clip_denoised = self.clip_denoised
-
-        # Prepare alphas, betas and other parameters
-        alphas_cumprod_t_next = self.alphas_cumprod[t_next] if t_next < self.total_steps else torch.tensor(0.0)
-
-        # Process model's output
-        if self.var_type == 'learned_range':
-            model_output, _ = torch.split(model_output, xt.shape[1], dim=1)
-
-        # Calculate the predicted x0 and predicted eps
-        if self.objective == 'pred_eps':
-            pred_eps = model_output
-            pred_x0 = self.pred_x0_from_eps(xt, t, pred_eps)
-        elif self.objective == 'pred_x0':
-            pred_x0 = model_output
-        else:
-            raise ValueError
-        if clip_denoised:
-            pred_x0.clamp_(-1., 1.)
-        pred_eps = self.pred_eps_from_x0(xt, t, pred_x0)
-
-        # Calculate x{t+1}
-        sample = (torch.sqrt(alphas_cumprod_t_next) * pred_x0 +
-                  torch.sqrt(1. - alphas_cumprod_t_next) * pred_eps)
-        return {'sample': sample, 'pred_x0': pred_x0}
 
     def ddim_sample_inversion_loop(
             self, model: nn.Module, img: Tensor,
