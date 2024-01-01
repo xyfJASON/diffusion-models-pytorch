@@ -13,23 +13,39 @@ accelerate-launch sample_ddim.py -c CONFIG \
                                  --save_dir SAVE_DIR \
                                  [--seed SEED] \
                                  [--ddim_eta DDIM_ETA] \
-                                 [--skip_type SKIP_TYPE] \
-                                 [--skip_steps SKIP_STEPS] \
+                                 [--respace_type RESPACE_TYPE] \
+                                 [--respace_steps RESPACE_STEPS] \
                                  [--micro_batch MICRO_BATCH] \
                                  [--mode {sample,interpolate,reconstruction}] \
                                  [--n_interpolate N_INTERPOLATE] \
                                  [--input_dir INPUT_DIR]
 ```
 
-- This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
-- Use `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps.
-- Choose a sampling mode by `--mode MODE`, the options are:
+This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
+
+Basic arguments:
+
+- `-c CONFIG`: path to the configuration file.
+- `--weights WEIGHTS`: path to the model weights (checkpoint) file.
+- `--n_samples N_SAMPLES`: number of samples.
+- `--save_dir SAVE_DIR`: path to the directory where samples will be saved.
+
+Advanced arguments:
+
+- `--respace_steps RESPACE_STEPS`: faster sampling that uses respaced timesteps.
+- `--mode MODE`: choose a sampling mode, the options are:
   - `sample` (default): randomly sample images
   - `interpolate`: sample two random images and interpolate between them. Use `--n_interpolate` to specify the number of images in between.
   - `reconstruction`:  encode a real image from dataset with **DDIM inversion** (DDIM encoding), and then decode it with DDIM sampling.
-- Specify `--micro_batch MICRO_BATCH` to sample images batch by batch. Set it as large as possible to fully utilize your devices.
+- `--micro_batch MICRO_BATCH`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
 
+See more details by running `python sample_ddim.py -h`.
 
+For example, to sample 50000 images from a pretrained CIFAR-10 model with 100 DDIM steps:
+
+```shell
+accelerate-launch sample_ddim.py -c ./configs/ddim_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddim-cifar10 --respace_steps 100
+```
 
 ## Evaluation
 

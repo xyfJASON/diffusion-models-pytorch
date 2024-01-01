@@ -14,25 +14,40 @@ where $y$ is the input text, $E_\text{image}$ and $E_\text{text}$ are CLIP's ima
 ## Sampling
 
 ```shell
-accelerate-launch sample_clip_guided.py -c CONFIG \
-                                        [--seed SEED] \
-                                        --weights WEIGHTS \
-                                        [--var_type VAR_TYPE] \
-                                        [--skip_type SKIP_TYPE] \
-                                        [--skip_steps SKIP_STEPS] \
-                                        --text TEXT \
-                                        [--guidance_weight GUIDANCE_WEIGHT] \
-                                        --n_samples N_SAMPLES \
-                                        [--ddim] \
-                                        [--ddim_eta DDIM_ETA] \
-                                        --save_dir SAVE_DIR \
-                                        [--micro_batch MICRO_BATCH]
+accelerate-launch sample_clip_guidance.py -c CONFIG \
+                                          --weights WEIGHTS \
+                                          --text TEXT \
+                                          --n_samples N_SAMPLES \
+                                          --save_dir SAVE_DIR \
+                                          [--seed SEED] \
+                                          [--var_type VAR_TYPE] \
+                                          [--respace_type RESPACE_TYPE] \
+                                          [--respace_steps RESPACE_STEPS] \
+                                          [--guidance_weight GUIDANCE_WEIGHT] \
+                                          [--clip_model CLIP_MODEL] \
+                                          [--ddim] \
+                                          [--ddim_eta DDIM_ETA] \
+                                          [--micro_batch MICRO_BATCH]
 ```
 
-- This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
-- Please wrap your text description with the quotation marks if it contains spaces, e.g., `--text 'a lovely dog'`.
-- Use `--skip_type SKIP_TYPE` and `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps.
-- Specify `--micro_batch MICRO_BATCH` to sample images batch by batch. Set it as large as possible to fully utilize your devices.
+This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
+
+Basic arguments:
+
+- `-c CONFIG`: path to the configuration file.
+- `--weights WEIGHTS`: path to the model weights (checkpoint) file.
+- `--text TEXT`: text description. Please wrap your description with quotation marks if it contains spaces, e.g., `--text 'a lovely dog'`.
+- `--n_samples N_SAMPLES`: number of samples to generate.
+- `--save_dir SAVE_DIR`: path to the directory where samples will be saved.
+- `--guidance_weight GUIDANCE_WEIGHT`: guidance weight (strength).
+- `--clip_model CLIP_MODEL`: name of CLIP model. Default to "openai/clip-vit-base-patch32".
+
+Advanced arguments:
+
+- `--respace_steps RESPACE_STEPS`: faster sampling that uses respaced timesteps.
+- `--micro_batch MICRO_BATCH`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
+
+See more details by running `python sample_clip_guidance -h`.
 
 
 

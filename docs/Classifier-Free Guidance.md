@@ -6,19 +6,18 @@
 
 ## Training
 
-```python
-accelerate-launch train_classifier_free.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
+```shell
+accelerate-launch train_ddpm_cfg.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
 ```
 
 - This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
 - Results (logs, checkpoints, tensorboard, etc.) of each run will be saved to `EXP_DIR`. If `EXP_DIR` is not specified, they will be saved to `runs/exp-{current time}/`.
-
 - To modify some configuration items without creating a new configuration file, you can pass `--key value` pairs to the script. For example, the default probability to disable guidance in training (`p_uncond`) in `./configs/classifier_free_cifar10.yaml` is 0.2, and if you want to change it to 0.1, you can simply pass `--train.p_uncond 0.1`.
 
 For example, to train on CIFAR-10 with default settings:
 
 ```shell
-accelerate-launch train_classifier_free.py -c ./configs/classifier_free_cifar10.yaml
+accelerate-launch train_ddpm_cfg.py -c ./configs/ddpm_cfg_cifar10.yaml
 ```
 
 
@@ -26,28 +25,45 @@ accelerate-launch train_classifier_free.py -c ./configs/classifier_free_cifar10.
 ## Sampling
 
 ```shell
-accelerate-launch sample_classifier_free.py -c CONFIG \
-                                            [--seed SEED] \
-                                            --weights WEIGHTS \
-                                            [--skip_type SKIP_TYPE] \
-                                            [--skip_steps SKIP_STEPS] \
-                                            --guidance_scale GUIDANCE_SCALE \
-                                            --n_samples_each_class N_SAMPLES_EACH_CLASS \
-                                            [--ddim] \
-                                            [--ddim_eta DDIM_ETA] \
-                                            --save_dir SAVE_DIR \
-                                            [--micro_batch MICRO_BATCH]
+accelerate-launch sample_cfg.py -c CONFIG \
+                                --weights WEIGHTS \
+                                --n_samples_each_class N_SAMPLES_EACH_CLASS \
+                                --save_dir SAVE_DIR \
+                                --guidance_scale GUIDANCE_SCALE \
+                                [--seed SEED] \
+                                [--class_ids CLASS_IDS [CLASS_IDS ...]] \
+                                [--respace_type RESPACE_TYPE] \
+                                [--respace_steps RESPACE_STEPS] \
+                                [--ddim] \
+                                [--ddim_eta DDIM_ETA] \
+                                [--micro_batch MICRO_BATCH]
 ```
 
-- This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
-- Use `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps. 
-- Use `--ddim` for DDIM sampling.
-- Specify `--micro_batch MICRO_BATCH` to sample images batch by batch. Set it as large as possible to fully utilize your devices.
-- I use $s$ in [Classifier Guidance paper](https://arxiv.org/abs/2105.05233) as the scale factor (`--guidance_scale`) rather than $w$ in the [Classifier-Free Guidance paper](https://arxiv.org/abs/2207.12598). In fact, we have $s=w+1$, and:
+Basic arguments:
+
+- `-c CONFIG`: path to the configuration file.
+- `--weights WEIGHTS`: path to the model weights (checkpoint) file.
+- `--n_samples_each_class N_SAMPLES_EACH_CLASS`: number of samples for each class.
+- `--save_dir SAVE_DIR`: path to the directory where samples will be saved.
+- `--guidance_scale GUIDANCE_SCALE`: the guidance scale factor $s$
   - $s=0$: unconditional generation
   - $s=1$: non-guided conditional generation
   - $s>1$: guided conditional generation
 
+Advanced arguments:
+
+- `--class_ids CLASS_IDS [CLASS_IDS ...]`: a list of class ids to sample. If not specified, all classes will be sampled.
+- `--respace_steps RESPACE_STEPS`: faster sampling that uses respaced timesteps.
+- `--ddim`: use DDIM sampling.
+- `--micro_batch MICRO_BATCH`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
+
+See more details by running `python sample_cfg.py -h`.
+
+For example, to sample 10 images for class (0, 2, 4, 8) from a pretrained CIFAR-10 model with guidance scale 3 using 100 DDIM steps:
+
+```shell
+accelerate-launch sample_cfg.py -c ./configs/ddpm_cfg_cifar10.yaml --weights /path/to/model/weights --n_samples_each_class 10 --save_dir ./samples/cfg-cifar10 --guidance_scale 3 --class_ids 0 2 4 8 --ddim --respace_steps 100
+```
 
 
 

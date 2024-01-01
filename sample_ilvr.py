@@ -1,6 +1,5 @@
 import os
 import argparse
-from functools import partial
 from omegaconf import OmegaConf
 
 import torch
@@ -21,7 +20,6 @@ def get_parser():
         '-c', '--config', type=str, required=True,
         help='Path to training configuration file',
     )
-    # arguments related to sampling
     parser.add_argument(
         '--seed', type=int, default=2022,
         help='Set random seed',
@@ -35,12 +33,12 @@ def get_parser():
         help='Type of variance of the reverse process',
     )
     parser.add_argument(
-        '--skip_type', type=str, default='uniform',
-        help='Type of skip sampling',
+        '--respace_type', type=str, default='uniform',
+        help='Type of respaced timestep sequence',
     )
     parser.add_argument(
-        '--skip_steps', type=int, default=None,
-        help='Number of timesteps for skip sampling',
+        '--respace_steps', type=int, default=None,
+        help='Length of respaced timestep sequence',
     )
     parser.add_argument(
         '--downsample_factor', type=int, default=8,
@@ -50,14 +48,6 @@ def get_parser():
         '--interp_method', type=str, default='cubic',
         choices=['cubic', 'lanczos2', 'lanczos3', 'linear', 'box'],
         help='Interpolation mode of the low-pass filter',
-    )
-    parser.add_argument(
-        '--ddim', action='store_true',
-        help='Use DDIM deterministic sampling',
-    )
-    parser.add_argument(
-        '--ddim_eta', type=float, default=0.0,
-        help='Parameter eta in DDIM sampling',
     )
     parser.add_argument(
         '--n_samples', type=int, required=True,
@@ -111,8 +101,8 @@ def main():
     diffusion_params = OmegaConf.to_container(conf.diffusion.params)
     diffusion_params.update({
         'var_type': args.var_type or diffusion_params.get('var_type', None),
-        'skip_type': None if args.skip_steps is None else args.skip_type,
-        'skip_steps': args.skip_steps,
+        'respace_type': None if args.respace_steps is None else args.respace_type,
+        'respace_steps': args.respace_steps,
         'device': device,
         'downsample_factor': args.downsample_factor,
         'interp_method': args.interp_method,
@@ -158,14 +148,11 @@ def main():
         dataloader = accelerator.prepare(dataloader)  # type: ignore
         # sampling
         idx = 0
-        sample_fn = diffuser.sample
-        if args.ddim:
-            sample_fn = partial(diffuser.ddim_sample, eta=args.ddim_eta)
         for i, X in enumerate(dataloader):
             X = X[0] if isinstance(X, (list, tuple)) else X
             init_noise = torch.randn_like(X)
             diffuser.set_ref_images(ref_images=X)
-            out = sample_fn(
+            out = diffuser.sample(
                 model=accelerator.unwrap_model(model), init_noise=init_noise,
                 tqdm_kwargs=dict(desc=f'Fold {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
             ).clamp(-1, 1)

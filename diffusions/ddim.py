@@ -20,13 +20,45 @@ class DDIM(DDPM):
 
             var_type: str = 'fixed_large',
             clip_denoised: bool = True,
-            skip_type: str = None,
-            skip_steps: int = 100,
-            skip_seq: Tensor = None,
+            respace_type: str = None,
+            respace_steps: int = 100,
+            respaced_seq: Tensor = None,
             eta: float = 0.,
 
             device: torch.device = 'cpu',
     ):
+        """Denoising Diffusion Implicit Models.
+
+        The arguments can be divided into two kinds. The first kind of arguments are used in training and should be
+        kept unchanged during inference. The second kind of arguments do not affect training (although they may be
+        used for visualization during training) and can be overridden by passing arguments to sampling functions
+        during inference.
+
+        Args:
+            total_steps: Total number of timesteps used to train the model.
+            beta_schedule: Type of beta schedule. Options: 'linear', 'quad', 'const', 'cosine'.
+            beta_start: Starting beta value.
+            beta_end: Ending beta value.
+            betas: A 1-D Tensor of pre-defined beta schedule. If provided, arguments `beta_*` will be ignored.
+            objective: Prediction objective of the model. Options: 'pred_eps', 'pred_x0', 'pred_v'.
+
+            var_type: Not used in DDIM.
+            clip_denoised: Clip the predicted x0 in range [-1, 1]. This argument doesn't affect training and can be
+             overridden in sampling functions.
+            respace_type: Type of respaced timestep sequence. Options: 'uniform', 'uniform-leading', 'uniform-linspace',
+             'uniform-trailing', 'quad', 'none', None. This argument doesn't affect training and can be overridden in
+             `set_respaced_seq()`.
+            respace_steps: Length of respaced timestep sequence, i.e., number of sampling steps during inference. This
+             argument doesn't affect training and can be overridden in `set_respaced_seq()`.
+            respaced_seq: A 1-D Tensor of pre-defined respaced sequence. If provided, arguments `respace_*` will be
+             ignored. This argument doesn't affect training and can be overridden in `set_respaced_seq()`.
+            eta: DDIM hyperparameter. This argument doesn't affect training and can be overridden in sampling functions.
+
+        References:
+            [1] Song, Jiaming, Chenlin Meng, and Stefano Ermon. "Denoising diffusion implicit models."
+            arXiv preprint arXiv:2010.02502 (2020).
+
+        """
         super().__init__(
             total_steps=total_steps,
             beta_schedule=beta_schedule,
@@ -36,24 +68,19 @@ class DDIM(DDPM):
             objective=objective,
             var_type=var_type,
             clip_denoised=clip_denoised,
-            skip_type=skip_type,
-            skip_steps=skip_steps,
-            skip_seq=skip_seq,
+            respace_type=respace_type,
+            respace_steps=respace_steps,
+            respaced_seq=respaced_seq,
             device=device,
         )
         self.eta = eta
         self.device = device
 
-    def pred_eps_from_x0(self, xt: Tensor, t: int, x0: Tensor):
-        sqrt_recip_alphas_cumprod_t = (1. / self.alphas_cumprod[t]) ** 0.5
-        sqrt_recipm1_alphas_cumprod_t = (1. / self.alphas_cumprod[t] - 1.) ** 0.5
-        return (sqrt_recip_alphas_cumprod_t * xt - x0) / sqrt_recipm1_alphas_cumprod_t
-
-    def ddim_p_sample(
+    def p_sample(
             self, model_output: Tensor, xt: Tensor, t: int, t_prev: int,
             clip_denoised: bool = True, eta: float = None,
     ):
-        """ Sample from p_theta(x{t-1} | xt) """
+        """Sample from p_theta(x{t-1} | xt) """
         if eta is None:
             eta = self.eta
         if clip_denoised is None:
@@ -88,17 +115,18 @@ class DDIM(DDPM):
                (1. - alphas_cumprod_t / alphas_cumprod_t_prev))
         mean = (torch.sqrt(alphas_cumprod_t_prev) * pred_x0 +
                 torch.sqrt(1. - alphas_cumprod_t_prev - var) * pred_eps)
+        reverse_eps = torch.randn_like(xt)
         if t == 0:
             sample = mean
         else:
-            sample = mean + torch.sqrt(var) * torch.randn_like(xt)
-        return {'sample': sample, 'pred_x0': pred_x0}
+            sample = mean + torch.sqrt(var) * reverse_eps
+        return {'sample': sample, 'pred_x0': pred_x0, 'pred_eps': pred_eps, 'reverse_eps': reverse_eps}
 
-    def ddim_p_sample_inversion(
+    def p_sample_inversion(
             self, model_output: Tensor, xt: Tensor, t: int, t_next: int,
             clip_denoised: bool = None, eta: float = None,
     ):
-        """ Sample x{t+1} from xt, only valid for DDIM (eta=0) """
+        """Sample x{t+1} from xt, only valid for DDIM (eta=0) """
         if eta is None:
             eta = self.eta
         if eta != 0.:
@@ -131,63 +159,67 @@ class DDIM(DDPM):
         # Calculate x{t+1}
         sample = (torch.sqrt(alphas_cumprod_t_next) * pred_x0 +
                   torch.sqrt(1. - alphas_cumprod_t_next) * pred_eps)
-        return {'sample': sample, 'pred_x0': pred_x0}
+        return {'sample': sample, 'pred_x0': pred_x0, 'pred_eps': pred_eps}
 
-    def ddim_sample_loop(
+    def sample_loop(
             self, model: nn.Module, init_noise: Tensor,
             clip_denoised: bool = None, eta: float = None,
-            tqdm_kwargs: Dict = None, **model_kwargs,
+            tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
         if tqdm_kwargs is None:
             tqdm_kwargs = dict()
+        if model_kwargs is None:
+            model_kwargs = dict()
         img = init_noise
-        skip_seq = self.skip_seq.tolist()
-        skip_seq_prev = [-1] + self.skip_seq[:-1].tolist()
-        pbar = tqdm.tqdm(total=len(skip_seq), **tqdm_kwargs)
-        for t, t_prev in zip(reversed(skip_seq), reversed(skip_seq_prev)):
+        sample_seq = self.respaced_seq.tolist()
+        sample_seq_prev = [-1] + self.respaced_seq[:-1].tolist()
+        pbar = tqdm.tqdm(total=len(sample_seq), **tqdm_kwargs)
+        for t, t_prev in zip(reversed(sample_seq), reversed(sample_seq_prev)):
             t_batch = torch.full((img.shape[0], ), t, device=self.device, dtype=torch.long)
             model_output = model(img, t_batch, **model_kwargs)
-            out = self.ddim_p_sample(model_output, img, t, t_prev, clip_denoised, eta)
+            out = self.p_sample(model_output, img, t, t_prev, clip_denoised, eta)
             img = out['sample']
             pbar.update(1)
             yield out
         pbar.close()
 
-    def ddim_sample(
+    def sample(
             self, model: nn.Module, init_noise: Tensor,
             clip_denoised: bool = None, eta: float = None,
-            tqdm_kwargs: Dict = None, **model_kwargs,
+            tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
         sample = None
-        for out in self.ddim_sample_loop(model, init_noise, clip_denoised, eta, tqdm_kwargs, **model_kwargs):
+        for out in self.sample_loop(model, init_noise, clip_denoised, eta, tqdm_kwargs, model_kwargs):
             sample = out['sample']
         return sample
 
-    def ddim_sample_inversion_loop(
+    def sample_inversion_loop(
             self, model: nn.Module, img: Tensor,
             clip_denoised: bool = None, eta: float = None,
-            tqdm_kwargs: Dict = None, **model_kwargs,
+            tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
         if tqdm_kwargs is None:
             tqdm_kwargs = dict()
-        skip_seq = self.skip_seq[:-1].tolist()
-        skip_seq_next = self.skip_seq[1:].tolist()
-        pbar = tqdm.tqdm(total=len(skip_seq), **tqdm_kwargs)
-        for t, t_next in zip(skip_seq, skip_seq_next):
+        if model_kwargs is None:
+            model_kwargs = dict()
+        sample_seq = self.respaced_seq[:-1].tolist()
+        sample_seq_next = self.respaced_seq[1:].tolist()
+        pbar = tqdm.tqdm(total=len(sample_seq), **tqdm_kwargs)
+        for t, t_next in zip(sample_seq, sample_seq_next):
             t_batch = torch.full((img.shape[0], ), t, device=img.device, dtype=torch.long)
             model_output = model(img, t_batch, **model_kwargs)
-            out = self.ddim_p_sample_inversion(model_output, img, t, t_next, clip_denoised, eta)
+            out = self.p_sample_inversion(model_output, img, t, t_next, clip_denoised, eta)
             img = out['sample']
             pbar.update(1)
             yield out
         pbar.close()
 
-    def ddim_sample_inversion(
+    def sample_inversion(
             self, model: nn.Module, img: Tensor,
             clip_denoised: bool = None, eta: float = None,
-            tqdm_kwargs: Dict = None, **model_kwargs,
+            tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
         sample = None
-        for out in self.ddim_sample_inversion_loop(model, img, clip_denoised, eta, tqdm_kwargs, **model_kwargs):
+        for out in self.sample_inversion_loop(model, img, clip_denoised, eta, tqdm_kwargs, model_kwargs):
             sample = out['sample']
         return sample

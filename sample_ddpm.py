@@ -18,7 +18,6 @@ def get_parser():
         '-c', '--config', type=str, required=True,
         help='Path to training configuration file',
     )
-    # arguments related to sampling
     parser.add_argument(
         '--seed', type=int, default=2022,
         help='Set random seed',
@@ -32,12 +31,12 @@ def get_parser():
         help='Type of variance of the reverse process',
     )
     parser.add_argument(
-        '--skip_type', type=str, default='uniform',
-        help='Type of skip sampling',
+        '--respace_type', type=str, default='uniform',
+        help='Type of respaced timestep sequence',
     )
     parser.add_argument(
-        '--skip_steps', type=int, default=None,
-        help='Number of timesteps for skip sampling',
+        '--respace_steps', type=int, default=None,
+        help='Length of respaced timestep sequence',
     )
     parser.add_argument(
         '--n_samples', type=int, required=True,
@@ -99,8 +98,8 @@ def main():
     diffusion_params = OmegaConf.to_container(conf.diffusion.params)
     diffusion_params.update({
         'var_type': args.var_type or diffusion_params.get('var_type', None),
-        'skip_type': None if args.skip_steps is None else args.skip_type,
-        'skip_steps': args.skip_steps,
+        'respace_type': None if args.respace_steps is None else args.respace_type,
+        'respace_steps': args.respace_steps,
         'device': device,
     })
     diffuser = diffusions.ddpm.DDPM(**diffusion_params)
@@ -148,7 +147,7 @@ def main():
     @torch.no_grad()
     def sample_denoise():
         idx = 0
-        freq = len(diffuser.skip_seq) // args.n_denoise
+        freq = len(diffuser.respaced_seq) // args.n_denoise
         img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
         micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
         folds = amortize(args.n_samples, micro_batch * accelerator.num_processes)
@@ -160,7 +159,7 @@ def main():
             )
             samples = [
                 out['sample'] for timestep, out in enumerate(sample_loop)
-                if (len(diffuser.skip_seq) - timestep - 1) % freq == 0
+                if (len(diffuser.respaced_seq) - timestep - 1) % freq == 0
             ]
             samples = torch.stack(samples, dim=1).clamp(-1, 1)
             samples = accelerator.gather(samples)[:bs]
@@ -173,7 +172,7 @@ def main():
     @torch.no_grad()
     def sample_progressive():
         idx = 0
-        freq = len(diffuser.skip_seq) // args.n_progressive
+        freq = len(diffuser.respaced_seq) // args.n_progressive
         img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
         micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
         folds = amortize(args.n_samples, micro_batch * accelerator.num_processes)
@@ -185,7 +184,7 @@ def main():
             )
             samples = [
                 out['pred_x0'] for timestep, out in enumerate(sample_loop)
-                if (len(diffuser.skip_seq) - timestep - 1) % freq == 0
+                if (len(diffuser.respaced_seq) - timestep - 1) % freq == 0
             ]
             samples = torch.stack(samples, dim=1).clamp(-1, 1)
             samples = accelerator.gather(samples)[:bs]

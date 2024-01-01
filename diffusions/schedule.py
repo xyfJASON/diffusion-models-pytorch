@@ -8,7 +8,8 @@ def get_beta_schedule(
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
 ):
-    """
+    """Get the beta schedule for diffusion.
+
     Args:
         total_steps: Number of diffusion steps.
         beta_schedule: Type of beta schedule. Options: 'linear', 'quad', 'const', 'cosine'.
@@ -37,43 +38,39 @@ def get_beta_schedule(
         raise ValueError(f'Beta schedule {beta_schedule} is not supported.')
 
 
-def get_skip_seq(
+def get_respaced_seq(
         total_steps: int = 1000,
-        skip_type: str = 'uniform',
-        skip_steps: int = 100,
+        respace_type: str = 'uniform',
+        respace_steps: int = 100,
 ):
-    """
+    """Get respaced time sequence for fast inference.
+
     Args:
         total_steps: Number of the original diffusion steps.
-        skip_type: Type of skip sequence. Options: 'uniform', 'uniform2', 'quad', 'none', None.
-        skip_steps: Number of skipped (respaced) diffusion steps.
+        respace_type: Type of respaced timestep sequence. Options: 'uniform', 'uniform-leading', 'uniform-linspace',
+         'uniform-trailing', 'quad', 'none', None.
+        respace_steps: Length of respaced timestep sequence.
 
     Returns:
-        A Tensor of length `skip_steps`, containing indices that are preserved in the skipped sequence.
+        A Tensor of length `respace_steps`, containing indices that are preserved in the respaced sequence.
 
     """
-    if skip_type == 'uniform':
-        skip = total_steps // skip_steps
-        seq = torch.arange(0, total_steps, skip).long()
-    elif skip_type == 'uniform2':
-        seq = torch.linspace(0, total_steps-1, skip_steps).long()
-    elif skip_type == 'quad':
-        seq = torch.linspace(0, math.sqrt(total_steps * 0.8), skip_steps) ** 2
+    if respace_type in ['uniform', 'uniform-leading']:
+        space = total_steps // respace_steps
+        seq = torch.arange(0, total_steps, space).long()
+    elif respace_type == 'uniform-linspace':
+        seq = torch.linspace(0, total_steps - 1, respace_steps).long()
+    elif respace_type == 'uniform-trailing':
+        space = total_steps // respace_steps
+        seq = torch.arange(total_steps-1, -1, -space).long().flip(dims=[0])
+    elif respace_type == 'quad':
+        seq = torch.linspace(0, math.sqrt(total_steps * 0.8), respace_steps) ** 2
         seq = torch.floor(seq).long()
-    elif skip_type is None or skip_type == 'none':
+    elif respace_type is None or respace_type == 'none':
         seq = torch.arange(0, total_steps).long()
     else:
-        raise ValueError(f'Skip type {skip_type} is not supported.')
+        raise ValueError(f'Respace type {respace_type} is not supported.')
     return seq
-
-
-def _test_skip():
-    seq = get_skip_seq(
-        total_steps=1000,
-        skip_type='uniform',
-        skip_steps=10,
-    )
-    print(seq)
 
 
 def _test_betas():
@@ -117,6 +114,27 @@ def _test_betas():
     plt.show()
 
 
+def _test_respace():
+    seq = get_respaced_seq(
+        total_steps=1000,
+        respace_type='uniform-leading',
+        respace_steps=10,
+    )
+    print('uniform-leading:\t', seq)
+    seq = get_respaced_seq(
+        total_steps=1000,
+        respace_type='uniform-linspace',
+        respace_steps=10,
+    )
+    print('uniform-linspace:\t', seq)
+    seq = get_respaced_seq(
+        total_steps=1000,
+        respace_type='uniform-trailing',
+        respace_steps=10,
+    )
+    print('uniform-trailing:\t', seq)
+
+
 if __name__ == '__main__':
     _test_betas()
-    # _test_skip()
+    # _test_respace()

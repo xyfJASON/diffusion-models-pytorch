@@ -8,15 +8,13 @@ Implement Diffusion Models with PyTorch.
 
 - [x] DDPM
 - [x] DDIM
-- [x] Guidance
 - [x] Classifier-Free Guidance
 - [x] DDPM-IP
-- Applications
-  - [x] CLIP Guidance
-  - [x] Mask Guidance
-  - [x] ILVR
-  - [x] SDEdit
-  - [x] DDIB
+- [x] CLIP Guidance
+- [x] Mask Guidance
+- [x] ILVR
+- [x] SDEdit
+- [x] DDIB
 
 <br/>
 
@@ -24,9 +22,17 @@ Implement Diffusion Models with PyTorch.
 
 ## Getting Started
 
+### Environment
+
+```shell
+conda create -n diffusion python=3.11
+conda activate diffusion
+pip install -r requirements.txt
+```
 
 
-### Instructions on training / sampling / evaluation
+
+### Documentations
 
 For instructions on training / sampling / evaluation, please refer to the [docs](./docs) folder.
 

@@ -1,7 +1,6 @@
 import os
 import math
 import argparse
-from functools import partial
 from omegaconf import OmegaConf
 
 import torch
@@ -29,12 +28,12 @@ def get_parser():
         help='Path to pretrained model weights',
     )
     parser.add_argument(
-        '--skip_type', type=str, default='uniform',
-        help='Type of skip sampling',
+        '--respace_type', type=str, default='uniform',
+        help='Type of respaced timestep sequence',
     )
     parser.add_argument(
-        '--skip_steps', type=int, default=None,
-        help='Number of timesteps for skip sampling',
+        '--respace_steps', type=int, default=None,
+        help='Length of respaced timestep sequence',
     )
     parser.add_argument(
         '--guidance_scale', type=float, required=True,
@@ -101,12 +100,16 @@ if __name__ == '__main__':
     # BUILD DIFFUSER
     diffusion_params = OmegaConf.to_container(conf.diffusion.params)
     diffusion_params.update({
-        'skip_type': None if args.skip_steps is None else args.skip_type,
-        'skip_steps': args.skip_steps,
+        'respace_type': None if args.respace_steps is None else args.respace_type,
+        'respace_steps': args.respace_steps,
         'guidance_scale': args.guidance_scale,
         'device': device,
     })
-    diffuser = diffusions.classifier_free.ClassifierFree(**diffusion_params)
+    if args.ddim:
+        diffusion_params.update({'eta': args.ddim_eta})
+        diffuser = diffusions.DDIMCFG(**diffusion_params)
+    else:
+        diffuser = diffusions.DDPMCFG(**diffusion_params)
 
     # BUILD MODEL
     model = instantiate_from_config(conf.model)
@@ -134,11 +137,6 @@ if __name__ == '__main__':
         img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
         micro_batch = min(args.micro_batch, math.ceil(args.n_samples_each_class / accelerator.num_processes))
         batch_size = micro_batch * accelerator.num_processes
-
-        sample_fn = diffuser.sample
-        if args.ddim:
-            sample_fn = partial(diffuser.ddim_sample, eta=args.ddim_eta)
-
         class_ids = args.class_ids
         if args.class_ids is None:
             class_ids = range(conf.data.num_classes)
@@ -153,9 +151,14 @@ if __name__ == '__main__':
             for i, bs in enumerate(folds):
                 init_noise = torch.randn((bs, *img_shape), device=device)
                 labels = torch.full((bs, ), fill_value=c, device=device)
-                samples = sample_fn(
-                    model=accelerator.unwrap_model(model), init_noise=init_noise, y=labels,
-                    tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
+                samples = diffuser.sample(
+                    model=accelerator.unwrap_model(model),
+                    init_noise=init_noise,
+                    model_kwargs=dict(y=labels),
+                    tqdm_kwargs=dict(
+                        desc=f'Fold {i}/{len(folds)}',
+                        disable=not accelerator.is_main_process,
+                    ),
                 ).clamp(-1, 1)
                 samples = accelerator.gather(samples)[:bs]
                 if accelerator.is_main_process:

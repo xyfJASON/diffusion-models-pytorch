@@ -10,10 +10,9 @@ from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 
 from models import EMA
-from metrics import AverageMeter
 from utils.logger import StatusTracker, get_logger
-from utils.misc import get_time_str, check_freq, amortize, get_data_generator
 from utils.misc import create_exp_dir, find_resume_checkpoint, instantiate_from_config
+from utils.misc import get_time_str, check_freq, amortize, get_data_generator, AverageMeter
 
 
 def get_parser():
@@ -114,7 +113,7 @@ def main():
 
     # BUILD MODEL AND OPTIMIZERS
     model = instantiate_from_config(conf.model)
-    ema = EMA(model, decay=conf.model.ema_decay, gradual=conf.model.get('ema_gradual', True))
+    ema = EMA(model.parameters(), decay=conf.train.ema_decay, gradual=conf.train.ema_gradual)
     optimizer = instantiate_from_config(conf.train.optim, params=model.parameters())
     step = 0
 
@@ -126,7 +125,7 @@ def main():
         logger.info(f'Successfully load model from {ckpt_path}')
         # load ema
         ckpt_ema = torch.load(os.path.join(ckpt_path, 'ema.pt'), map_location='cpu')
-        ema.load_state_dict(ckpt_ema['ema'], device=device)
+        ema.load_state_dict(ckpt_ema['ema'])
         logger.info(f'Successfully load ema from {ckpt_path}')
         # load optimizer
         ckpt_optimizer = torch.load(os.path.join(ckpt_path, 'optimizer.pt'), map_location='cpu')
@@ -139,10 +138,15 @@ def main():
     @accelerator.on_main_process
     def save_ckpt(save_path: str):
         os.makedirs(save_path, exist_ok=True)
+        unwrapped_model = accelerator.unwrap_model(model)
         # save model
-        accelerator.save(dict(model=accelerator.unwrap_model(model).state_dict()), os.path.join(save_path, 'model.pt'))
+        accelerator.save(dict(model=unwrapped_model.state_dict()), os.path.join(save_path, 'model.pt'))
         # save ema
         accelerator.save(dict(ema=ema.state_dict()), os.path.join(save_path, 'ema.pt'))
+        # save ema model
+        ema.apply_shadow(model.parameters())
+        accelerator.save(dict(model=unwrapped_model.state_dict()), os.path.join(save_path, 'ema_model.pt'))
+        ema.restore(model.parameters())
         # save optimizer
         accelerator.save(dict(optimizer=optimizer.state_dict()), os.path.join(save_path, 'optimizer.pt'))
         # save meta information
@@ -178,7 +182,7 @@ def main():
             loss_meter.update(loss.item(), X.shape[0])
         accelerator.clip_grad_norm_(model.parameters(), max_norm=conf.train.clip_grad_norm)
         optimizer.step()
-        ema.update()
+        ema.update(model.parameters())
         return dict(
             loss=loss_meter.avg,
             lr=optimizer.param_groups[0]['lr'],
@@ -187,7 +191,7 @@ def main():
     @torch.no_grad()
     def sample(savepath: str):
         unwrapped_model = accelerator.unwrap_model(model)
-        ema.apply_shadow()
+        ema.apply_shadow(model.parameters())
         all_samples = []
         img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
         mb = min(micro_batch, math.ceil(conf.train.n_samples / accelerator.num_processes))
@@ -207,7 +211,7 @@ def main():
         if accelerator.is_main_process:
             nrow = math.ceil(math.sqrt(conf.train.n_samples))
             save_image(all_samples, savepath, nrow=nrow, normalize=True, value_range=(-1, 1))
-        ema.restore()
+        ema.restore(model.parameters())
 
     # START TRAINING
     logger.info('Start training...')

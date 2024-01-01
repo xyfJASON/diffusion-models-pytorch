@@ -1,16 +1,19 @@
 import os
-import math
 import argparse
 from functools import partial
 from omegaconf import OmegaConf
 
 import torch
 import accelerate
+import torchvision.transforms as T
 from torchvision.utils import save_image
+from torch.utils.data import DataLoader, Subset
 
 import diffusions
+from datasets import ImageDir
 from utils.logger import get_logger
-from utils.misc import image_norm_to_float, instantiate_from_config, amortize
+from utils.mask import DatasetWithMask
+from utils.misc import image_norm_to_float, instantiate_from_config
 
 
 def get_parser():
@@ -19,7 +22,6 @@ def get_parser():
         '-c', '--config', type=str, required=True,
         help='Path to training configuration file',
     )
-    # arguments related to sampling
     parser.add_argument(
         '--seed', type=int, default=2022,
         help='Set random seed',
@@ -33,39 +35,39 @@ def get_parser():
         help='Type of variance of the reverse process',
     )
     parser.add_argument(
-        '--skip_type', type=str, default='uniform',
-        help='Type of skip sampling',
+        '--respace_type', type=str, default='uniform',
+        help='Type of respaced timestep sequence',
     )
     parser.add_argument(
-        '--skip_steps', type=int, default=None,
-        help='Number of timesteps for skip sampling',
+        '--respace_steps', type=int, default=None,
+        help='Length of respaced timestep sequence',
     )
     parser.add_argument(
-        '--text', type=str, required=True,
-        help='Text description of the generated image',
+        '--resample', action='store_true',
+        help='Use resample strategy proposed in RePaint paper',
     )
     parser.add_argument(
-        '--guidance_weight', type=float, default=100.,
-        help='Weight of CLIP guidance',
+        '--resample_r', type=int, default=10,
+        help='Number of resampling, as proposed in RePaint paper',
+    )
+    parser.add_argument(
+        '--resample_j', type=int, default=10,
+        help='Jump lengths of resampling, as proposed in RePaint paper',
     )
     parser.add_argument(
         '--n_samples', type=int, required=True,
         help='Number of samples',
     )
     parser.add_argument(
-        '--ddim', action='store_true',
-        help='Use DDIM deterministic sampling',
-    )
-    parser.add_argument(
-        '--ddim_eta', type=float, default=0.0,
-        help='Parameter eta in DDIM sampling',
+        '--input_dir', type=str, required=True,
+        help='Path to the directory containing input images',
     )
     parser.add_argument(
         '--save_dir', type=str, required=True,
         help='Path to directory saving samples',
     )
     parser.add_argument(
-        '--micro_batch', type=int, default=500,
+        '--micro_batch', type=int, default=32,
         help='Batch size on each process. Sample by batch is much faster',
     )
     return parser
@@ -104,15 +106,11 @@ def main():
     diffusion_params = OmegaConf.to_container(conf.diffusion.params)
     diffusion_params.update({
         'var_type': args.var_type or diffusion_params.get('var_type', None),
-        'skip_type': None if args.skip_steps is None else args.skip_type,
-        'skip_steps': args.skip_steps,
+        'respace_type': None if args.respace_steps is None else args.respace_type,
+        'respace_steps': args.respace_steps,
         'device': device,
-        'guidance_weight': args.guidance_weight,
-        'clip_pretrained': 'openai/clip-vit-base-patch32',
     })
-    diffuser = diffusions.CLIPGuided(**diffusion_params)
-    logger.info('=' * 19 + ' Model Info ' + '=' * 19)
-    logger.info('Using CLIP model: `openai/clip-vit-base-patch32`')
+    diffuser = diffusions.MaskGuidance(**diffusion_params)
 
     # BUILD MODEL
     model = instantiate_from_config(conf.model)
@@ -125,6 +123,7 @@ def main():
         model.load_state_dict(ckpt['model'])
     else:
         model.load_state_dict(ckpt)
+    logger.info('=' * 19 + ' Model Info ' + '=' * 19)
     logger.info(f'Successfully load model from {args.weights}')
     logger.info('=' * 50)
 
@@ -136,33 +135,45 @@ def main():
 
     @torch.no_grad()
     def sample():
+        # build dataset
+        if args.input_dir is None:
+            raise ValueError('input_dir must be specified when mode is reconstruction')
+        transforms = T.Compose([
+            T.Resize(conf.data.params.img_size),
+            T.CenterCrop(conf.data.params.img_size),
+            T.ToTensor(),
+            T.Normalize([0.5] * 3, [0.5] * 3),
+        ])
+        dataset = ImageDir(root=args.input_dir, transform=transforms)
+        if args.n_samples < len(dataset):
+            dataset = Subset(dataset=dataset, indices=torch.arange(args.n_samples))
+        dataset = DatasetWithMask(dataset=dataset, mask_type='brush')
+        dataloader = DataLoader(dataset=dataset, batch_size=args.micro_batch, **conf.dataloader)
+        dataloader = accelerator.prepare(dataloader)  # type: ignore
+        # sampling
         idx = 0
-        img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
-        micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
         sample_fn = diffuser.sample
-        if args.ddim:
-            sample_fn = partial(diffuser.ddim_sample, eta=args.ddim_eta)
-        folds = amortize(args.n_samples, micro_batch * accelerator.num_processes)
-        for i, bs in enumerate(folds):
-            init_noise = torch.randn((micro_batch, *img_shape), device=device)
-            samples = sample_fn(
+        if args.resample:
+            sample_fn = partial(diffuser.resample, resample_r=args.resample_r, resample_j=args.resample_j)
+        for i, (X, mask) in enumerate(dataloader):
+            init_noise = torch.randn_like(X)
+            masked_image = X * mask
+            diffuser.set_mask_and_image(masked_image, mask.float())
+            recX = sample_fn(
                 model=accelerator.unwrap_model(model), init_noise=init_noise,
-                tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process)
+                tqdm_kwargs=dict(desc=f'Fold {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
             ).clamp(-1, 1)
-            samples = accelerator.gather(samples)[:bs]
+            recX = accelerator.gather_for_metrics(recX)
             if accelerator.is_main_process:
-                for x in samples:
+                for m, x, r in zip(masked_image, X, recX):
+                    m = image_norm_to_float(m).cpu()
                     x = image_norm_to_float(x).cpu()
-                    save_image(x, os.path.join(args.save_dir, f'{idx}.png'), nrow=1)
+                    r = image_norm_to_float(r).cpu()
+                    save_image([m, x, r], os.path.join(args.save_dir, f'{idx}.png'), nrow=3)
                     idx += 1
-        with open(os.path.join(args.save_dir, 'description.txt'), 'w') as f:
-            f.write(args.text)
 
     # START SAMPLING
     logger.info('Start sampling...')
-    logger.info(f'The input text description is: {args.text}')
-    logger.info(f'Guidance weight: {args.guidance_weight}')
-    diffuser.set_text(args.text)
     os.makedirs(args.save_dir, exist_ok=True)
     logger.info(f'Samples will be saved to {args.save_dir}')
     sample()

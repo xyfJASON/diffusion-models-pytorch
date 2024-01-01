@@ -26,26 +26,42 @@ accelerate-launch train_ddpm.py -c ./configs/ddpm_cifar10.yaml
 
 ```shell
 accelerate-launch sample_ddpm.py -c CONFIG \
-                                 [--seed SEED] \
                                  --weights WEIGHTS \
-                                 [--var_type VAR_TYPE] \
-                                 [--skip_type SKIP_TYPE] \
-                                 [--skip_steps SKIP_STEPS] \
                                  --n_samples N_SAMPLES \
                                  --save_dir SAVE_DIR \
+                                 [--seed SEED] \
+                                 [--var_type VAR_TYPE] \
+                                 [--respace_type RESPACE_TYPE] \
+                                 [--respace_steps RESPACE_STEPS] \
                                  [--micro_batch MICRO_BATCH] \
                                  [--mode {sample,denoise,progressive}] \
                                  [--n_denoise N_DENOISE] \
                                  [--n_progressive N_PROGRESSIVE]
 ```
 
-- This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
-- Use `--skip_steps SKIP_STEPS` for faster sampling that skip timesteps.
-- Choose a sampling mode by `--mode MODE`, the options are:
+Basic arguments:
+
+- `-c CONFIG`: path to the configuration file.
+- `--weights WEIGHTS`: path to the model weights (checkpoint) file.
+- `--n_samples N_SAMPLES`: number of samples.
+- `--save_dir SAVE_DIR`: path to the directory where samples will be saved.
+
+Advanced arguments:
+
+- `--respace_steps RESPACE_STEPS`: faster sampling that uses respaced timesteps.
+- `--mode MODE`: choose a sampling mode, the options are:
   - `sample` (default): randomly sample images
   - `denoise`: sample images with visualization of its denoising process.
   - `progressive`:  sample images with visualization of its progressive generation process (i.e. predicted $x_0$).
-- Specify `--micro_batch MICRO_BATCH` to sample images batch by batch. Set it as large as possible to fully utilize your devices.
+- `--micro_batch MICRO_BATCH`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
+
+See more details by running `python sample_ddpm.py -h`.
+
+For example, to sample 50000 images from a pretrained CIFAR-10 model with 100 steps and "fixed_small" variance:
+
+```shell
+accelerate-launch sample_ddpm.py -c ./configs/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddpm-cifar10 --respace_steps 100 --var_type fixed_small
+```
 
 
 

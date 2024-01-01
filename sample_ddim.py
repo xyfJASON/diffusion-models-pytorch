@@ -21,7 +21,6 @@ def get_parser():
         '-c', '--config', type=str, required=True,
         help='Path to training configuration file',
     )
-    # arguments for sampling
     parser.add_argument(
         '--seed', type=int, default=2001,
         help='Set random seed',
@@ -35,12 +34,12 @@ def get_parser():
         help='Parameter eta in DDIM sampling',
     )
     parser.add_argument(
-        '--skip_type', type=str, default='uniform',
-        help='Type of skip sampling',
+        '--respace_type', type=str, default='uniform',
+        help='Type of respaced timestep sequence',
     )
     parser.add_argument(
-        '--skip_steps', type=int, default=None,
-        help='Number of timesteps for skip sampling',
+        '--respace_steps', type=int, default=None,
+        help='Length of respaced timestep sequence',
     )
     parser.add_argument(
         '--n_samples', type=int, required=True,
@@ -103,12 +102,11 @@ def main():
     # BUILD DIFFUSER
     diffusion_params = OmegaConf.to_container(conf.diffusion.params)
     diffusion_params.update({
-        'skip_type': None if args.skip_steps is None else args.skip_type,
-        'skip_steps': args.skip_steps,
+        'respace_type': None if args.respace_steps is None else args.respace_type,
+        'respace_steps': args.respace_steps,
         'eta': args.ddim_eta,
         'device': device,
     })
-    diffusion_params.pop('var_type', None)
     diffuser = diffusions.ddim.DDIM(**diffusion_params)
 
     # BUILD MODEL
@@ -140,7 +138,7 @@ def main():
         folds = amortize(args.n_samples, micro_batch * accelerator.num_processes)
         for i, bs in enumerate(folds):
             init_noise = torch.randn((micro_batch, *img_shape), device=device)
-            samples = diffuser.ddim_sample(
+            samples = diffuser.sample(
                 model=accelerator.unwrap_model(model), init_noise=init_noise,
                 tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
             ).clamp(-1, 1)
@@ -166,7 +164,7 @@ def main():
             z1 = torch.randn((micro_batch, *img_shape), device=device)
             z2 = torch.randn((micro_batch, *img_shape), device=device)
             samples = torch.stack([
-                diffuser.ddim_sample(
+                diffuser.sample(
                     model=accelerator.unwrap_model(model), init_noise=slerp(t, z1, z2),
                     tqdm_kwargs=dict(
                         desc=f'Fold {i}/{len(folds)}, interp {j}/{args.n_interpolate}',
@@ -203,11 +201,11 @@ def main():
         idx = 0
         for i, X in enumerate(dataloader):
             X = X[0].float() if isinstance(X, (tuple, list)) else X.float()
-            noise = diffuser.ddim_sample_inversion(
+            noise = diffuser.sample_inversion(
                 model=accelerator.unwrap_model(model), img=X,
                 tqdm_kwargs=dict(desc=f'img2noise {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
             )
-            recX = diffuser.ddim_sample(
+            recX = diffuser.sample(
                 model=accelerator.unwrap_model(model), init_noise=noise,
                 tqdm_kwargs=dict(desc=f'noise2img {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
             )

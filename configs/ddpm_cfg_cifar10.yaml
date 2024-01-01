@@ -26,11 +26,9 @@ model:
     attn_head_dims: 64
     resblock_updown: true
     dropout: 0.1
-  ema_decay: 0.9999
-  ema_gradual: true
 
 diffusion:
-  target: diffusions.classifier_free.ClassifierFree
+  target: diffusions.cfg.ddpm_cfg.DDPMCFG
   params:
     total_steps: 1000
     beta_schedule: cosine
@@ -43,7 +41,11 @@ train:
   n_steps: 800000
   batch_size: 128
   micro_batch: 0
+
   clip_grad_norm: 1.0
+  ema_decay: 0.9999
+  ema_gradual: true
+
   print_freq: 400
   save_freq: 10000
   sample_freq: 5000

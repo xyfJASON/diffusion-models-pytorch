@@ -20,7 +20,6 @@ def get_parser():
         '-c', '--config', type=str, required=True,
         help='Path to training configuration file',
     )
-    # arguments for sampling
     parser.add_argument(
         '--seed', type=int, default=2001,
         help='Set random seed',
@@ -42,12 +41,12 @@ def get_parser():
         help='Class label of domain B',
     )
     parser.add_argument(
-        '--skip_type', type=str, default='uniform',
-        help='Type of skip sampling',
+        '--respace_type', type=str, default='uniform',
+        help='Type of respaced timestep sequence',
     )
     parser.add_argument(
-        '--skip_steps', type=int, default=None,
-        help='Number of timesteps for skip sampling',
+        '--respace_steps', type=int, default=None,
+        help='Length of respaced timestep sequence',
     )
     parser.add_argument(
         '--save_dir', type=str, required=True,
@@ -92,11 +91,10 @@ def main():
     # BUILD DIFFUSER
     diffusion_params = OmegaConf.to_container(conf.diffusion.params)
     diffusion_params.update({
-        'skip_type': None if args.skip_steps is None else args.skip_type,
-        'skip_steps': args.skip_steps,
+        'respace_type': None if args.respace_steps is None else args.respace_type,
+        'respace_steps': args.respace_steps,
         'device': device,
     })
-    diffusion_params.pop('var_type', None)
     diffuser = diffusions.ddim.DDIM(**diffusion_params)
 
     # BUILD MODEL
@@ -139,12 +137,12 @@ def main():
             X = X[0].float() if isinstance(X, (tuple, list)) else X.float()
             yA = torch.full((X.shape[0], ), args.class_A, device=device).long()
             yB = torch.full((X.shape[0], ), args.class_B, device=device).long()
-            noise = diffuser.ddim_sample_inversion(
-                model=accelerator.unwrap_model(model), img=X, y=yA,
+            noise = diffuser.sample_inversion(
+                model=accelerator.unwrap_model(model), img=X, model_kwargs=dict(y=yA),
                 tqdm_kwargs=dict(desc=f'img2noise {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
             )
-            tX = diffuser.ddim_sample(
-                model=model, init_noise=noise, y=yB,
+            tX = diffuser.sample(
+                model=model, init_noise=noise, model_kwargs=dict(y=yB),
                 tqdm_kwargs=dict(desc=f'noise2img {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
             )
             X = accelerator.gather_for_metrics(X)

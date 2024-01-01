@@ -21,7 +21,6 @@ def get_parser():
         '-c', '--config', type=str, required=True,
         help='Path to training configuration file',
     )
-    # arguments related to sampling
     parser.add_argument(
         '--seed', type=int, default=2022,
         help='Set random seed',
@@ -35,12 +34,12 @@ def get_parser():
         help='Type of variance of the reverse process',
     )
     parser.add_argument(
-        '--skip_type', type=str, default='uniform',
-        help='Type of skip sampling',
+        '--respace_type', type=str, default='uniform',
+        help='Type of respaced timestep sequence',
     )
     parser.add_argument(
-        '--skip_steps', type=int, default=None,
-        help='Number of timesteps for skip sampling',
+        '--respace_steps', type=int, default=None,
+        help='Length of respaced timestep sequence',
     )
     parser.add_argument(
         '--edit_steps', type=int, required=True,
@@ -94,8 +93,8 @@ def main():
     diffusion_params = OmegaConf.to_container(conf.diffusion.params)
     diffusion_params.update({
         'var_type': args.var_type or diffusion_params.get('var_type', None),
-        'skip_type': None if args.skip_steps is None else args.skip_type,
-        'skip_steps': args.skip_steps,
+        'respace_type': None if args.respace_steps is None else args.respace_type,
+        'respace_steps': args.respace_steps,
         'device': device,
     })
     diffuser = diffusions.ddpm.DDPM(**diffusion_params)
@@ -137,8 +136,8 @@ def main():
         logger.info(f'Found {len(dataset)} images in {args.input_dir}')
         # sampling
         idx = 0
-        assert 0 <= args.edit_steps < len(diffuser.skip_seq)
-        time_seq = diffuser.skip_seq[:args.edit_steps].tolist()
+        assert 0 <= args.edit_steps < len(diffuser.respaced_seq)
+        time_seq = diffuser.respaced_seq[:args.edit_steps].tolist()
         time_seq_prev = [-1] + time_seq[:-1]
         for i, img in enumerate(dataloader):
             img = img.float()

@@ -24,8 +24,6 @@ model:
     num_res_blocks: 2
     n_heads: 1
     dropout: 0.1
-  ema_decay: 0.9999
-  ema_gradual: true
 
 diffusion:
   target: diffusions.ddpm.DDPM
@@ -41,7 +39,11 @@ train:
   n_steps: 800000
   batch_size: 128
   micro_batch: 0
+
   clip_grad_norm: 1.0
+  ema_decay: 0.9999
+  ema_gradual: true
+
   print_freq: 400
   save_freq: 10000
   sample_freq: 5000
