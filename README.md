@@ -52,38 +52,45 @@ Training a diffusion model on a large-scale dataset from scratch is time-consumi
     <tr>
         <th>Model Arch.</th>
         <th>Dataset</th>
+        <th>Resolution</th>
         <th>Original Repo</th>
         <th>Config file</th>
     </tr>
     <tr>
         <td rowspan="2">UNet by pesser</td>
-        <td>CelebA-HQ (256x256)</td>
+        <td>CelebA-HQ</td>
+        <td>256x256</td>
         <td><a href="https://github.com/pesser/pytorch_diffusion">pesser/pytorch_diffusion</a></td>
         <td><a href="./configs/pesser/pytorch_diffusion/ema_diffusion_celebahq_model-560000.yaml">config</a></td>
     </tr>
     <tr>
-        <td>LSUN-Church (256x256)</td>
+        <td>LSUN-Church</td>
+        <td>256x256</td>
         <td><a href="https://github.com/pesser/pytorch_diffusion">pesser/pytorch_diffusion</a></td>
         <td><a href="./configs/pesser/pytorch_diffusion/ema_diffusion_lsun_church_model-4432000.yaml">config</a></td>
     </tr>
     <tr>
         <td rowspan="4">ADM by openai</td>
-        <td>ImageNet (unconditional, 256x256)</td>
+        <td>ImageNet (unconditional)</td>
+        <td>256x256</td>
         <td><a href="https://github.com/openai/guided-diffusion">openai/guided-diffusion</a></td>
         <td><a href="./configs/openai/guided-diffusion/256x256_diffusion_uncond.yaml">config</a></td>
     </tr>
     <tr>
-        <td>ImageNet (conditional, 256x256)</td>
+        <td>ImageNet (conditional)</td>
+        <td>256x256</td>
         <td><a href="https://github.com/openai/guided-diffusion">openai/guided-diffusion</a></td>
         <td><a href="./configs/openai/guided-diffusion/256x256_diffusion.yaml">config</a></td>
     </tr>
     <tr>
-        <td>AFHQ-Dog (256x256)</td>
+        <td>AFHQ-Dog</td>
+        <td>256x256</td>
         <td><a href="https://github.com/jychoi118/ilvr_adm">jychoi118/ilvr_adm</a></td>
         <td><a href="./configs/jychoi118/ilvr_adm/afhqdog_p2.yaml">config</a></td>
     </tr>
     <tr>
-        <td>CelebA-HQ (256x256)</td>
+        <td>CelebA-HQ</td>
+        <td>256x256</td>
         <td><a href="https://github.com/andreas128/RePaint">andreas128/RePaint</a></td>
         <td><a href="./configs/andreas128/RePaint/celebahq_256_250000.yaml">config</a></td>
     </tr>

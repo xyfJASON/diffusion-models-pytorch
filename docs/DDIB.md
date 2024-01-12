@@ -7,16 +7,16 @@
 ## Sampling
 
 ```shell
-accelerate-launch sample_ddib.py -c CONFIG \
-                                 --weights WEIGHTS \
-                                 --input_dir INPUT_DIR \
-                                 --save_dir SAVE_DIR \
-                                 --class_A CLASS_A \
-                                 --class_B CLASS_B \
-                                 [--seed SEED] \
-                                 [--respace_type RESPACE_TYPE] \
-                                 [--respace_steps RESPACE_STEPS] \
-                                 [--micro_batch MICRO_BATCH]
+accelerate-launch scripts/sample_ddib.py -c CONFIG \
+                                         --weights WEIGHTS \
+                                         --input_dir INPUT_DIR \
+                                         --save_dir SAVE_DIR \
+                                         --class_A CLASS_A \
+                                         --class_B CLASS_B \
+                                         [--seed SEED] \
+                                         [--respace_type RESPACE_TYPE] \
+                                         [--respace_steps RESPACE_STEPS] \
+                                         [--micro_batch MICRO_BATCH]
 ```
 
 This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.

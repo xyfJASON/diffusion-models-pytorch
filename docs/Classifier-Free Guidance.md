@@ -7,7 +7,7 @@
 ## Training
 
 ```shell
-accelerate-launch train_ddpm_cfg.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
+accelerate-launch scripts/train_ddpm_cfg.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
 ```
 
 - This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
@@ -17,7 +17,7 @@ accelerate-launch train_ddpm_cfg.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
 For example, to train on CIFAR-10 with default settings:
 
 ```shell
-accelerate-launch train_ddpm_cfg.py -c ./configs/ddpm_cfg_cifar10.yaml
+accelerate-launch scripts/train_ddpm_cfg.py -c ./configs/ddpm_cfg_cifar10.yaml
 ```
 
 
@@ -25,18 +25,18 @@ accelerate-launch train_ddpm_cfg.py -c ./configs/ddpm_cfg_cifar10.yaml
 ## Sampling
 
 ```shell
-accelerate-launch sample_cfg.py -c CONFIG \
-                                --weights WEIGHTS \
-                                --n_samples_each_class N_SAMPLES_EACH_CLASS \
-                                --save_dir SAVE_DIR \
-                                --guidance_scale GUIDANCE_SCALE \
-                                [--seed SEED] \
-                                [--class_ids CLASS_IDS [CLASS_IDS ...]] \
-                                [--respace_type RESPACE_TYPE] \
-                                [--respace_steps RESPACE_STEPS] \
-                                [--ddim] \
-                                [--ddim_eta DDIM_ETA] \
-                                [--micro_batch MICRO_BATCH]
+accelerate-launch scripts/sample_cfg.py -c CONFIG \
+                                        --weights WEIGHTS \
+                                        --n_samples_each_class N_SAMPLES_EACH_CLASS \
+                                        --save_dir SAVE_DIR \
+                                        --guidance_scale GUIDANCE_SCALE \
+                                        [--seed SEED] \
+                                        [--class_ids CLASS_IDS [CLASS_IDS ...]] \
+                                        [--respace_type RESPACE_TYPE] \
+                                        [--respace_steps RESPACE_STEPS] \
+                                        [--ddim] \
+                                        [--ddim_eta DDIM_ETA] \
+                                        [--micro_batch MICRO_BATCH]
 ```
 
 Basic arguments:
@@ -62,7 +62,7 @@ See more details by running `python sample_cfg.py -h`.
 For example, to sample 10 images for class (0, 2, 4, 8) from a pretrained CIFAR-10 model with guidance scale 3 using 100 DDIM steps:
 
 ```shell
-accelerate-launch sample_cfg.py -c ./configs/ddpm_cfg_cifar10.yaml --weights /path/to/model/weights --n_samples_each_class 10 --save_dir ./samples/cfg-cifar10 --guidance_scale 3 --class_ids 0 2 4 8 --ddim --respace_steps 100
+accelerate-launch scripts/sample_cfg.py -c ./configs/ddpm_cfg_cifar10.yaml --weights /path/to/model/weights --n_samples_each_class 10 --save_dir ./samples/cfg-cifar10 --guidance_scale 3 --class_ids 0 2 4 8 --ddim --respace_steps 100
 ```
 
 

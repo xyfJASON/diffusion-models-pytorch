@@ -1,19 +1,21 @@
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import tqdm
 import argparse
-from functools import partial
 from omegaconf import OmegaConf
 
 import torch
 import accelerate
 import torchvision.transforms as T
+from torch.utils.data import DataLoader
 from torchvision.utils import save_image
-from torch.utils.data import DataLoader, Subset
 
 import diffusions
 from datasets import ImageDir
 from utils.logger import get_logger
-from utils.mask import DatasetWithMask
-from utils.misc import image_norm_to_float, instantiate_from_config
+from utils.misc import instantiate_from_config
 
 
 def get_parser():
@@ -43,31 +45,19 @@ def get_parser():
         help='Length of respaced timestep sequence',
     )
     parser.add_argument(
-        '--resample', action='store_true',
-        help='Use resample strategy proposed in RePaint paper',
-    )
-    parser.add_argument(
-        '--resample_r', type=int, default=10,
-        help='Number of resampling, as proposed in RePaint paper',
-    )
-    parser.add_argument(
-        '--resample_j', type=int, default=10,
-        help='Jump lengths of resampling, as proposed in RePaint paper',
-    )
-    parser.add_argument(
-        '--n_samples', type=int, required=True,
-        help='Number of samples',
+        '--edit_steps', type=int, required=True,
+        help='Number of timesteps to add noise and denoise',
     )
     parser.add_argument(
         '--input_dir', type=str, required=True,
-        help='Path to the directory containing input images',
+        help='Path to the input directory',
     )
     parser.add_argument(
         '--save_dir', type=str, required=True,
-        help='Path to directory saving samples',
+        help='Path to the directory to save samples',
     )
     parser.add_argument(
-        '--micro_batch', type=int, default=32,
+        '--micro_batch', type=int, default=500,
         help='Batch size on each process. Sample by batch is much faster',
     )
     return parser
@@ -110,7 +100,7 @@ def main():
         'respace_steps': args.respace_steps,
         'device': device,
     })
-    diffuser = diffusions.MaskGuidance(**diffusion_params)
+    diffuser = diffusions.ddpm.DDPM(**diffusion_params)
 
     # BUILD MODEL
     model = instantiate_from_config(conf.model)
@@ -139,37 +129,44 @@ def main():
         if args.input_dir is None:
             raise ValueError('input_dir must be specified when mode is reconstruction')
         transforms = T.Compose([
-            T.Resize(conf.data.params.img_size),
-            T.CenterCrop(conf.data.params.img_size),
+            T.Resize((conf.data.params.img_size, conf.data.params.img_size)),
             T.ToTensor(),
-            T.Normalize([0.5] * 3, [0.5] * 3),
+            T.Normalize([0.5] * conf.data.img_channels, [0.5] * conf.data.img_channels),
         ])
         dataset = ImageDir(root=args.input_dir, transform=transforms)
-        if args.n_samples < len(dataset):
-            dataset = Subset(dataset=dataset, indices=torch.arange(args.n_samples))
-        dataset = DatasetWithMask(dataset=dataset, mask_type='brush')
         dataloader = DataLoader(dataset=dataset, batch_size=args.micro_batch, **conf.dataloader)
         dataloader = accelerator.prepare(dataloader)  # type: ignore
+        logger.info(f'Found {len(dataset)} images in {args.input_dir}')
         # sampling
         idx = 0
-        sample_fn = diffuser.sample
-        if args.resample:
-            sample_fn = partial(diffuser.resample, resample_r=args.resample_r, resample_j=args.resample_j)
-        for i, (X, mask) in enumerate(dataloader):
-            init_noise = torch.randn_like(X)
-            masked_image = X * mask
-            diffuser.set_mask_and_image(masked_image, mask.float())
-            recX = sample_fn(
-                model=accelerator.unwrap_model(model), init_noise=init_noise,
-                tqdm_kwargs=dict(desc=f'Fold {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
-            ).clamp(-1, 1)
-            recX = accelerator.gather_for_metrics(recX)
+        assert 0 <= args.edit_steps < len(diffuser.respaced_seq)
+        time_seq = diffuser.respaced_seq[:args.edit_steps].tolist()
+        time_seq_prev = [-1] + time_seq[:-1]
+        for i, img in enumerate(dataloader):
+            img = img.float()
+            noised_img = diffuser.q_sample(x0=img, t=time_seq[-1])
+            edited_img = noised_img.clone()
+            pbar = tqdm.tqdm(
+                total=len(time_seq), desc=f'Fold {i}/{len(dataloader)}',
+                disable=not accelerator.is_main_process,
+            )
+            for t, t_prev in zip(reversed(time_seq), reversed(time_seq_prev)):
+                t_batch = torch.full((edited_img.shape[0], ), t, device=device)
+                model_output = accelerator.unwrap_model(model)(edited_img, t_batch)
+                out = diffuser.p_sample(model_output, edited_img, t, t_prev)
+                edited_img = out['sample']
+                pbar.update(1)
+            pbar.close()
+            edited_img.clamp_(-1, 1)
+            img = accelerator.gather_for_metrics(img)
+            noised_img = accelerator.gather_for_metrics(noised_img)
+            edited_img = accelerator.gather_for_metrics(edited_img)
             if accelerator.is_main_process:
-                for m, x, r in zip(masked_image, X, recX):
-                    m = image_norm_to_float(m).cpu()
-                    x = image_norm_to_float(x).cpu()
-                    r = image_norm_to_float(r).cpu()
-                    save_image([m, x, r], os.path.join(args.save_dir, f'{idx}.png'), nrow=3)
+                for im, nim, eim in zip(img, noised_img, edited_img):
+                    save_image(
+                        [im, nim, eim], os.path.join(args.save_dir, f'{idx}.png'),
+                        nrow=3, normalize=True, value_range=(-1, 1),
+                    )
                     idx += 1
 
     # START SAMPLING

@@ -7,18 +7,18 @@
 ## Sampling
 
 ```shell
-accelerate-launch sample_ddim.py -c CONFIG \
-                                 --weights WEIGHTS \
-                                 --n_samples N_SAMPLES \
-                                 --save_dir SAVE_DIR \
-                                 [--seed SEED] \
-                                 [--ddim_eta DDIM_ETA] \
-                                 [--respace_type RESPACE_TYPE] \
-                                 [--respace_steps RESPACE_STEPS] \
-                                 [--micro_batch MICRO_BATCH] \
-                                 [--mode {sample,interpolate,reconstruction}] \
-                                 [--n_interpolate N_INTERPOLATE] \
-                                 [--input_dir INPUT_DIR]
+accelerate-launch scripts/sample_ddim.py -c CONFIG \
+                                         --weights WEIGHTS \
+                                         --n_samples N_SAMPLES \
+                                         --save_dir SAVE_DIR \
+                                         [--seed SEED] \
+                                         [--ddim_eta DDIM_ETA] \
+                                         [--respace_type RESPACE_TYPE] \
+                                         [--respace_steps RESPACE_STEPS] \
+                                         [--micro_batch MICRO_BATCH] \
+                                         [--mode {sample,interpolate,reconstruction}] \
+                                         [--n_interpolate N_INTERPOLATE] \
+                                         [--input_dir INPUT_DIR]
 ```
 
 This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
@@ -44,7 +44,7 @@ See more details by running `python sample_ddim.py -h`.
 For example, to sample 50000 images from a pretrained CIFAR-10 model with 100 DDIM steps:
 
 ```shell
-accelerate-launch sample_ddim.py -c ./configs/ddim_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddim-cifar10 --respace_steps 100
+accelerate-launch scripts/sample_ddim.py -c ./configs/ddim_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddim-cifar10 --respace_steps 100
 ```
 
 ## Evaluation

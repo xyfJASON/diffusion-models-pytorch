@@ -11,7 +11,7 @@ Almost the same as DDPM (see [doc](./DDPM.md)), except using `diffusions.ddpm_ip
 For example, to train on CIFAR-10 with default settings:
 
 ```shell
-accelerate-launch train_ddpm.py -c ./configs/ddpm_cifar10.yaml --diffusion.target diffusions.ddpm_ip.DDPM_IP
+accelerate-launch scripts/train_ddpm.py -c ./configs/ddpm_cifar10.yaml --diffusion.target diffusions.ddpm_ip.DDPM_IP
 ```
 
 

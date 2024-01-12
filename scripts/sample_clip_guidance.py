@@ -1,17 +1,18 @@
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import math
 import argparse
 from omegaconf import OmegaConf
 
 import torch
 import accelerate
-import torchvision.transforms as T
-from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 
 import diffusions
-from datasets import ImageDir
 from utils.logger import get_logger
-from utils.misc import image_norm_to_float, instantiate_from_config
+from utils.misc import image_norm_to_float, instantiate_from_config, amortize
 
 
 def get_parser():
@@ -20,25 +21,18 @@ def get_parser():
         '-c', '--config', type=str, required=True,
         help='Path to training configuration file',
     )
+    # arguments related to sampling
     parser.add_argument(
-        '--seed', type=int, default=2001,
+        '--seed', type=int, default=2022,
         help='Set random seed',
     )
     parser.add_argument(
-        '--input_dir', type=str, required=True,
-        help='Input directory containing images in domain A',
-    )
-    parser.add_argument(
         '--weights', type=str, required=True,
-        help='Path to model weights',
+        help='Path to pretrained model weights',
     )
     parser.add_argument(
-        '--class_A', type=int, required=True,
-        help='Class label of domain A',
-    )
-    parser.add_argument(
-        '--class_B', type=int, required=True,
-        help='Class label of domain B',
+        '--var_type', type=str, default=None,
+        help='Type of variance of the reverse process',
     )
     parser.add_argument(
         '--respace_type', type=str, default='uniform',
@@ -47,6 +41,22 @@ def get_parser():
     parser.add_argument(
         '--respace_steps', type=int, default=None,
         help='Length of respaced timestep sequence',
+    )
+    parser.add_argument(
+        '--text', type=str, required=True,
+        help='Text description of the generated image',
+    )
+    parser.add_argument(
+        '--guidance_weight', type=float, default=100.,
+        help='Weight of CLIP guidance',
+    )
+    parser.add_argument(
+        '--clip_model', type=str, default='openai/clip-vit-large-patch14',
+        help='Name of CLIP model',
+    )
+    parser.add_argument(
+        '--n_samples', type=int, required=True,
+        help='Number of samples',
     )
     parser.add_argument(
         '--save_dir', type=str, required=True,
@@ -91,11 +101,16 @@ def main():
     # BUILD DIFFUSER
     diffusion_params = OmegaConf.to_container(conf.diffusion.params)
     diffusion_params.update({
+        'var_type': args.var_type or diffusion_params.get('var_type', None),
         'respace_type': None if args.respace_steps is None else args.respace_type,
         'respace_steps': args.respace_steps,
         'device': device,
+        'guidance_weight': args.guidance_weight,
+        'clip_pretrained': args.clip_model,
     })
-    diffuser = diffusions.ddim.DDIM(**diffusion_params)
+    diffuser = diffusions.CLIPGuidance(**diffusion_params)
+    logger.info('=' * 19 + ' Model Info ' + '=' * 19)
+    logger.info(f'Using CLIP model: `{args.clip_model}`')
 
     # BUILD MODEL
     model = instantiate_from_config(conf.model)
@@ -108,7 +123,6 @@ def main():
         model.load_state_dict(ckpt['model'])
     else:
         model.load_state_dict(ckpt)
-    logger.info('=' * 19 + ' Model Info ' + '=' * 19)
     logger.info(f'Successfully load model from {args.weights}')
     logger.info('=' * 50)
 
@@ -119,46 +133,34 @@ def main():
     accelerator.wait_for_everyone()
 
     @torch.no_grad()
-    def translate():
-        # build dataset
-        if args.input_dir is None:
-            raise ValueError('input_dir must be specified when mode is reconstruction')
-        transforms = T.Compose([
-            T.Resize((conf.data.params.img_size, conf.data.params.img_size)),
-            T.ToTensor(),
-            T.Normalize([0.5] * 3, [0.5] * 3),
-        ])
-        dataset = ImageDir(root=args.input_dir, transform=transforms)
-        dataloader = DataLoader(dataset=dataset, batch_size=args.micro_batch, **conf.dataloader)
-        dataloader = accelerator.prepare(dataloader)  # type: ignore
-        # sampling
+    def sample():
         idx = 0
-        for i, X in enumerate(dataloader):
-            X = X[0].float() if isinstance(X, (tuple, list)) else X.float()
-            yA = torch.full((X.shape[0], ), args.class_A, device=device).long()
-            yB = torch.full((X.shape[0], ), args.class_B, device=device).long()
-            noise = diffuser.sample_inversion(
-                model=accelerator.unwrap_model(model), img=X, model_kwargs=dict(y=yA),
-                tqdm_kwargs=dict(desc=f'img2noise {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
-            )
-            tX = diffuser.sample(
-                model=model, init_noise=noise, model_kwargs=dict(y=yB),
-                tqdm_kwargs=dict(desc=f'noise2img {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
-            )
-            X = accelerator.gather_for_metrics(X)
-            tX = accelerator.gather_for_metrics(tX)
+        img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
+        micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
+        folds = amortize(args.n_samples, micro_batch * accelerator.num_processes)
+        for i, bs in enumerate(folds):
+            init_noise = torch.randn((micro_batch, *img_shape), device=device)
+            samples = diffuser.sample(
+                model=accelerator.unwrap_model(model), init_noise=init_noise,
+                tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process)
+            ).clamp(-1, 1)
+            samples = accelerator.gather(samples)[:bs]
             if accelerator.is_main_process:
-                for x, tx in zip(X, tX):
+                for x in samples:
                     x = image_norm_to_float(x).cpu()
-                    tx = image_norm_to_float(tx).cpu()
-                    save_image([x, tx], os.path.join(args.save_dir, f'{idx}.png'), nrow=2)
+                    save_image(x, os.path.join(args.save_dir, f'{idx}.png'), nrow=1)
                     idx += 1
+        with open(os.path.join(args.save_dir, 'description.txt'), 'w') as f:
+            f.write(args.text)
 
     # START SAMPLING
     logger.info('Start sampling...')
+    logger.info(f'The input text description is: {args.text}')
+    logger.info(f'Guidance weight: {args.guidance_weight}')
+    diffuser.set_text(args.text)
     os.makedirs(args.save_dir, exist_ok=True)
     logger.info(f'Samples will be saved to {args.save_dir}')
-    translate()
+    sample()
     logger.info(f'Sampled images are saved to {args.save_dir}')
     logger.info('End of sampling')
 

@@ -1,17 +1,18 @@
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import math
 import argparse
 from omegaconf import OmegaConf
 
 import torch
 import accelerate
-import torchvision.transforms as T
 from torchvision.utils import save_image
-from torch.utils.data import DataLoader, Subset
 
 import diffusions
-from datasets import ImageDir
 from utils.logger import get_logger
-from utils.misc import image_norm_to_float, instantiate_from_config
+from utils.misc import image_norm_to_float, instantiate_from_config, amortize
 
 
 def get_parser():
@@ -20,6 +21,7 @@ def get_parser():
         '-c', '--config', type=str, required=True,
         help='Path to training configuration file',
     )
+    # arguments for sampling
     parser.add_argument(
         '--seed', type=int, default=2022,
         help='Set random seed',
@@ -27,10 +29,6 @@ def get_parser():
     parser.add_argument(
         '--weights', type=str, required=True,
         help='Path to pretrained model weights',
-    )
-    parser.add_argument(
-        '--var_type', type=str, default=None,
-        help='Type of variance of the reverse process',
     )
     parser.add_argument(
         '--respace_type', type=str, default='uniform',
@@ -41,34 +39,39 @@ def get_parser():
         help='Length of respaced timestep sequence',
     )
     parser.add_argument(
-        '--downsample_factor', type=int, default=8,
-        help='Downsample factor of the low-pass filter',
+        '--guidance_scale', type=float, required=True,
+        help='Guidance scale. 0 for unconditional generation, '
+             '1 for non-guided generation, >1 for guided generation',
     )
     parser.add_argument(
-        '--interp_method', type=str, default='cubic',
-        choices=['cubic', 'lanczos2', 'lanczos3', 'linear', 'box'],
-        help='Interpolation mode of the low-pass filter',
+        '--class_ids', type=int, nargs='+', default=None,
+        help='Which class IDs to sample. '
+             'If not provided, will sample all the classes',
     )
     parser.add_argument(
-        '--n_samples', type=int, required=True,
-        help='Number of samples',
+        '--n_samples_each_class', type=int, required=True,
+        help='Number of samples in each class',
     )
     parser.add_argument(
-        '--input_dir', type=str, required=True,
-        help='Path to the directory containing input images',
+        '--ddim', action='store_true',
+        help='Use DDIM deterministic sampling',
+    )
+    parser.add_argument(
+        '--ddim_eta', type=float, default=0.0,
+        help='Parameter eta in DDIM sampling',
     )
     parser.add_argument(
         '--save_dir', type=str, required=True,
         help='Path to directory saving samples',
     )
     parser.add_argument(
-        '--micro_batch', type=int, default=32,
+        '--micro_batch', type=int, default=500,
         help='Batch size on each process. Sample by batch is much faster',
     )
     return parser
 
 
-def main():
+if __name__ == '__main__':
     # PARSE ARGS AND CONFIGS
     args, unknown_args = get_parser().parse_known_args()
     unknown_args = [(a[2:] if a.startswith('--') else a) for a in unknown_args]
@@ -100,14 +103,16 @@ def main():
     # BUILD DIFFUSER
     diffusion_params = OmegaConf.to_container(conf.diffusion.params)
     diffusion_params.update({
-        'var_type': args.var_type or diffusion_params.get('var_type', None),
         'respace_type': None if args.respace_steps is None else args.respace_type,
         'respace_steps': args.respace_steps,
+        'guidance_scale': args.guidance_scale,
         'device': device,
-        'downsample_factor': args.downsample_factor,
-        'interp_method': args.interp_method,
     })
-    diffuser = diffusions.ILVR(**diffusion_params)
+    if args.ddim:
+        diffusion_params.update({'eta': args.ddim_eta})
+        diffuser = diffusions.DDIMCFG(**diffusion_params)
+    else:
+        diffuser = diffusions.DDPMCFG(**diffusion_params)
 
     # BUILD MODEL
     model = instantiate_from_config(conf.model)
@@ -132,37 +137,38 @@ def main():
 
     @torch.no_grad()
     def sample():
-        # build dataset
-        if args.input_dir is None:
-            raise ValueError('input_dir must be specified when mode is reconstruction')
-        transforms = T.Compose([
-            T.Resize(conf.data.params.img_size),
-            T.CenterCrop(conf.data.params.img_size),
-            T.ToTensor(),
-            T.Normalize([0.5] * 3, [0.5] * 3),
-        ])
-        dataset = ImageDir(root=args.input_dir, transform=transforms)
-        if args.n_samples < len(dataset):
-            dataset = Subset(dataset=dataset, indices=torch.arange(args.n_samples))
-        dataloader = DataLoader(dataset=dataset, batch_size=args.micro_batch, **conf.dataloader)
-        dataloader = accelerator.prepare(dataloader)  # type: ignore
-        # sampling
-        idx = 0
-        for i, X in enumerate(dataloader):
-            X = X[0] if isinstance(X, (list, tuple)) else X
-            init_noise = torch.randn_like(X)
-            diffuser.set_ref_images(ref_images=X)
-            out = diffuser.sample(
-                model=accelerator.unwrap_model(model), init_noise=init_noise,
-                tqdm_kwargs=dict(desc=f'Fold {i}/{len(dataloader)}', disable=not accelerator.is_main_process),
-            ).clamp(-1, 1)
-            out = accelerator.gather_for_metrics(out)
-            if accelerator.is_main_process:
-                for x, o in zip(X, out):
-                    x = image_norm_to_float(x).cpu()
-                    o = image_norm_to_float(o).cpu()
-                    save_image([x, o], os.path.join(args.save_dir, f'{idx}.png'), nrow=2)
-                    idx += 1
+        img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
+        micro_batch = min(args.micro_batch, math.ceil(args.n_samples_each_class / accelerator.num_processes))
+        batch_size = micro_batch * accelerator.num_processes
+        class_ids = args.class_ids
+        if args.class_ids is None:
+            class_ids = range(conf.data.num_classes)
+        logger.info(f'Will sample {args.n_samples_each_class} images '
+                    f'for each of the following class IDs: {class_ids}')
+
+        for c in class_ids:
+            os.makedirs(os.path.join(args.save_dir, f'class{c}'), exist_ok=True)
+            idx = 0
+            logger.info(f'Sampling class {c}')
+            folds = amortize(args.n_samples_each_class, batch_size)
+            for i, bs in enumerate(folds):
+                init_noise = torch.randn((bs, *img_shape), device=device)
+                labels = torch.full((bs, ), fill_value=c, device=device)
+                samples = diffuser.sample(
+                    model=accelerator.unwrap_model(model),
+                    init_noise=init_noise,
+                    model_kwargs=dict(y=labels),
+                    tqdm_kwargs=dict(
+                        desc=f'Fold {i}/{len(folds)}',
+                        disable=not accelerator.is_main_process,
+                    ),
+                ).clamp(-1, 1)
+                samples = accelerator.gather(samples)[:bs]
+                if accelerator.is_main_process:
+                    for x in samples:
+                        x = image_norm_to_float(x).cpu()
+                        save_image(x, os.path.join(args.save_dir, f'class{c}', f'{idx}.png'), nrow=1)
+                        idx += 1
 
     # START SAMPLING
     logger.info('Start sampling...')
@@ -171,7 +177,3 @@ def main():
     sample()
     logger.info(f'Sampled images are saved to {args.save_dir}')
     logger.info('End of sampling')
-
-
-if __name__ == '__main__':
-    main()

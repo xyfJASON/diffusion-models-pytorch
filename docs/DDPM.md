@@ -7,7 +7,7 @@
 ## Training
 
 ```shell
-accelerate-launch train_ddpm.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
+accelerate-launch scripts/train_ddpm.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
 ```
 
 - This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) for how to launch the scripts on different platforms.
@@ -17,7 +17,7 @@ accelerate-launch train_ddpm.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
 For example, to train on CIFAR-10 with default settings:
 
 ```shell
-accelerate-launch train_ddpm.py -c ./configs/ddpm_cifar10.yaml
+accelerate-launch scripts/train_ddpm.py -c ./configs/ddpm_cifar10.yaml
 ```
 
 
@@ -25,18 +25,18 @@ accelerate-launch train_ddpm.py -c ./configs/ddpm_cifar10.yaml
 ## Sampling
 
 ```shell
-accelerate-launch sample_ddpm.py -c CONFIG \
-                                 --weights WEIGHTS \
-                                 --n_samples N_SAMPLES \
-                                 --save_dir SAVE_DIR \
-                                 [--seed SEED] \
-                                 [--var_type VAR_TYPE] \
-                                 [--respace_type RESPACE_TYPE] \
-                                 [--respace_steps RESPACE_STEPS] \
-                                 [--micro_batch MICRO_BATCH] \
-                                 [--mode {sample,denoise,progressive}] \
-                                 [--n_denoise N_DENOISE] \
-                                 [--n_progressive N_PROGRESSIVE]
+accelerate-launch scripts/sample_ddpm.py -c CONFIG \
+                                         --weights WEIGHTS \
+                                         --n_samples N_SAMPLES \
+                                         --save_dir SAVE_DIR \
+                                         [--seed SEED] \
+                                         [--var_type VAR_TYPE] \
+                                         [--respace_type RESPACE_TYPE] \
+                                         [--respace_steps RESPACE_STEPS] \
+                                         [--micro_batch MICRO_BATCH] \
+                                         [--mode {sample,denoise,progressive}] \
+                                         [--n_denoise N_DENOISE] \
+                                         [--n_progressive N_PROGRESSIVE]
 ```
 
 Basic arguments:
@@ -60,7 +60,7 @@ See more details by running `python sample_ddpm.py -h`.
 For example, to sample 50000 images from a pretrained CIFAR-10 model with 100 steps and "fixed_small" variance:
 
 ```shell
-accelerate-launch sample_ddpm.py -c ./configs/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddpm-cifar10 --respace_steps 100 --var_type fixed_small
+accelerate-launch scripts/sample_ddpm.py -c ./configs/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddpm-cifar10 --respace_steps 100 --var_type fixed_small
 ```
 
 
