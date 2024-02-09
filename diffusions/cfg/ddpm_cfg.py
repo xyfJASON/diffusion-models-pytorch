@@ -1,5 +1,5 @@
 import tqdm
-from typing import Dict
+from typing import Dict, Any
 from contextlib import contextmanager
 
 import torch
@@ -37,7 +37,8 @@ class DDPMCFG(DDPM):
 
     def sample_loop(
             self, model: nn.Module, init_noise: Tensor,
-            var_type: str = None, clip_denoised: bool = None, guidance_scale: float = None,
+            var_type: str = None, clip_denoised: bool = None,
+            guidance_scale: float = None, uncond_conditioning: Any = None,
             tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
         if guidance_scale is None:
@@ -47,7 +48,7 @@ class DDPMCFG(DDPM):
         if self.cond_kwarg not in model_kwargs.keys():
             raise ValueError(f'Condition argument `{self.cond_kwarg}` not found in model_kwargs.')
         uncond_model_kwargs = model_kwargs.copy()
-        uncond_model_kwargs[self.cond_kwarg] = None
+        uncond_model_kwargs[self.cond_kwarg] = uncond_conditioning
 
         img = init_noise
         sample_seq = self.respaced_seq.tolist()
@@ -74,13 +75,15 @@ class DDPMCFG(DDPM):
 
     def sample(
             self, model: nn.Module, init_noise: Tensor,
-            var_type: str = None, clip_denoised: bool = None, guidance_scale: float = None,
+            var_type: str = None, clip_denoised: bool = None,
+            guidance_scale: float = None, uncond_conditioning: Any = None,
             tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
         sample = None
         for out in self.sample_loop(
                 model, init_noise,
-                var_type, clip_denoised, guidance_scale,
+                var_type, clip_denoised,
+                guidance_scale, uncond_conditioning,
                 tqdm_kwargs, model_kwargs,
         ):
             sample = out['sample']

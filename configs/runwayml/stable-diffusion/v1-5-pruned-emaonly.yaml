@@ -1,0 +1,50 @@
+model:
+  target: models.stablediffusion.stablediffusion.StableDiffusion
+  params:
+    scale_factor: 0.18215
+
+    text_encoder_config:
+      target: models.stablediffusion.text_encoders.FrozenCLIPEmbedder
+
+    autoencoder_config:
+      target: models.stablediffusion.autoencoder.AutoEncoderKL
+      params:
+        embed_dim: 4
+        double_z: true
+        z_channels: 4
+        resolution: 256
+        in_channels: 3
+        out_ch: 3
+        ch: 128
+        ch_mult: [1, 2, 4, 4]
+        num_res_blocks: 2
+        attn_resolutions: []
+        dropout: 0.0
+
+    unet_config:
+      target: models.stablediffusion.unet.UNetModel
+      params:
+        image_size: 32  # unused
+        in_channels: 4
+        out_channels: 4
+        model_channels: 320
+        attention_resolutions: [ 4, 2, 1 ]
+        num_res_blocks: 2
+        channel_mult: [ 1, 2, 4, 4 ]
+        num_heads: 8
+        use_spatial_transformer: True
+        transformer_depth: 1
+        context_dim: 768
+        use_checkpoint: True
+        legacy: False
+
+diffusion:
+  target: diffusions.ddpm.DDPM
+  params:
+    total_steps: 1000
+    beta_schedule: quad
+    beta_start: 0.00085
+    beta_end: 0.0120
+    objective: pred_eps
+    clip_denoised: false
+    var_type: fixed_small

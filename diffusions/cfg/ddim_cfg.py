@@ -1,5 +1,5 @@
 import tqdm
-from typing import Dict
+from typing import Dict, Any
 from contextlib import contextmanager
 
 import torch
@@ -37,7 +37,8 @@ class DDIMCFG(DDIM):
 
     def sample_loop(
             self, model: nn.Module, init_noise: Tensor,
-            clip_denoised: bool = None, eta: float = None, guidance_scale: float = None,
+            clip_denoised: bool = None, eta: float = None,
+            guidance_scale: float = None, uncond_conditioning: Any = None,
             tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
         if guidance_scale is None:
@@ -47,7 +48,7 @@ class DDIMCFG(DDIM):
         if self.cond_kwarg not in model_kwargs.keys():
             raise ValueError(f'Condition argument `{self.cond_kwarg}` not found in model_kwargs.')
         uncond_model_kwargs = model_kwargs.copy()
-        uncond_model_kwargs[self.cond_kwarg] = None
+        uncond_model_kwargs[self.cond_kwarg] = uncond_conditioning
 
         img = init_noise
         sample_seq = self.respaced_seq.tolist()
@@ -74,13 +75,15 @@ class DDIMCFG(DDIM):
 
     def sample(
             self, model: nn.Module, init_noise: Tensor,
-            clip_denoised: bool = None, eta: float = None, guidance_scale: float = None,
+            clip_denoised: bool = None, eta: float = None,
+            guidance_scale: float = None, uncond_conditioning: Any = None,
             tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
         sample = None
         for out in self.sample_loop(
                 model, init_noise,
-                clip_denoised, eta, guidance_scale,
+                clip_denoised, eta,
+                guidance_scale, uncond_conditioning,
                 tqdm_kwargs, model_kwargs,
         ):
             sample = out['sample']
@@ -88,7 +91,8 @@ class DDIMCFG(DDIM):
 
     def sample_inversion_loop(
             self, model: nn.Module, img: Tensor,
-            clip_denoised: bool = None, eta: float = None, guidance_scale: float = None,
+            clip_denoised: bool = None, eta: float = None,
+            guidance_scale: float = None, uncond_conditioning: Any = None,
             tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
         if guidance_scale is None:
@@ -98,7 +102,7 @@ class DDIMCFG(DDIM):
         if self.cond_kwarg not in model_kwargs.keys():
             raise ValueError(f'Condition argument `{self.cond_kwarg}` not found in model_kwargs.')
         uncond_model_kwargs = model_kwargs.copy()
-        uncond_model_kwargs[self.cond_kwarg] = None
+        uncond_model_kwargs[self.cond_kwarg] = uncond_conditioning
 
         sample_seq = self.respaced_seq[:-1].tolist()
         sample_seq_next = self.respaced_seq[1:].tolist()
@@ -124,13 +128,15 @@ class DDIMCFG(DDIM):
 
     def sample_inversion(
             self, model: nn.Module, img: Tensor,
-            clip_denoised: bool = None, eta: float = None, guidance_scale: float = None,
+            clip_denoised: bool = None, eta: float = None,
+            guidance_scale: float = None, uncond_conditioning: Any = None,
             tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
         sample = None
         for out in self.sample_inversion_loop(
                 model, img,
-                clip_denoised, eta, guidance_scale,
+                clip_denoised, eta,
+                guidance_scale, uncond_conditioning,
                 tqdm_kwargs, model_kwargs,
         ):
             sample = out['sample']
