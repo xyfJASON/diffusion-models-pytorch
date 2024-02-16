@@ -2,6 +2,7 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import math
 import argparse
 from omegaconf import OmegaConf
 
@@ -14,6 +15,7 @@ from torchvision.utils import save_image
 import diffusions
 from datasets import ImageDir
 from utils.logger import get_logger
+from utils.load import load_weights
 from utils.misc import image_norm_to_float, instantiate_from_config
 
 
@@ -21,7 +23,7 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-c', '--config', type=str, required=True,
-        help='Path to training configuration file',
+        help='Path to inference configuration file',
     )
     parser.add_argument(
         '--seed', type=int, default=2001,
@@ -56,8 +58,8 @@ def get_parser():
         help='Path to directory saving samples',
     )
     parser.add_argument(
-        '--micro_batch', type=int, default=500,
-        help='Batch size on each process. Sample by batch is much faster',
+        '--batch_size', type=int, default=32,
+        help='Batch size on each process',
     )
     return parser
 
@@ -104,13 +106,8 @@ def main():
     model = instantiate_from_config(conf.model)
 
     # LOAD WEIGHTS
-    ckpt = torch.load(args.weights, map_location='cpu')
-    if 'ema' in ckpt:
-        model.load_state_dict(ckpt['ema']['shadow'])
-    elif 'model' in ckpt:
-        model.load_state_dict(ckpt['model'])
-    else:
-        model.load_state_dict(ckpt)
+    weights = load_weights(args.weights)
+    model.load_state_dict(weights)
     logger.info('=' * 19 + ' Model Info ' + '=' * 19)
     logger.info(f'Successfully load model from {args.weights}')
     logger.info('=' * 50)
@@ -125,15 +122,17 @@ def main():
     def translate():
         # build dataset
         if args.input_dir is None:
-            raise ValueError('input_dir must be specified when mode is reconstruction')
+            raise ValueError('input_dir is required')
         transforms = T.Compose([
             T.Resize((conf.data.params.img_size, conf.data.params.img_size)),
             T.ToTensor(),
             T.Normalize([0.5] * 3, [0.5] * 3),
         ])
         dataset = ImageDir(root=args.input_dir, transform=transforms)
-        dataloader = DataLoader(dataset=dataset, batch_size=args.micro_batch, **conf.dataloader)
+        bspp = min(args.batch_size, math.ceil(len(dataset) / accelerator.num_processes))
+        dataloader = DataLoader(dataset=dataset, batch_size=bspp, num_workers=4, pin_memory=True, prefetch_factor=2)
         dataloader = accelerator.prepare(dataloader)  # type: ignore
+        logger.info(f'Found {len(dataset)} images in {args.input_dir}')
         # sampling
         idx = 0
         for i, X in enumerate(dataloader):

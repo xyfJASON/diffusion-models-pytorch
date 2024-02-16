@@ -1,0 +1,31 @@
+data:
+  target: datasets.cifar10.CIFAR10
+  params:
+    root: ~/data/CIFAR-10/
+    img_size: 32
+  img_channels: 3
+  num_classes: 10
+
+model:
+  target: models.unet_categorial_adagn.UNetCategorialAdaGN
+  params:
+    in_channels: 3
+    out_channels: 3
+    dim: 128
+    dim_mults: [1, 2, 2, 2]
+    use_attn: [false, true, true, false]
+    num_res_blocks: 2
+    num_classes: 10
+    attn_head_dims: 64
+    resblock_updown: true
+    dropout: 0.1
+
+diffusion:
+  target: diffusions.cfg.ddpm_cfg.DDPMCFG
+  params:
+    total_steps: 1000
+    beta_schedule: cosine
+    beta_start: 0.0001
+    beta_end: 0.02
+    objective: pred_eps
+    var_type: fixed_large

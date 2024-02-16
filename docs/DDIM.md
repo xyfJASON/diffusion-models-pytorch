@@ -15,7 +15,7 @@ accelerate-launch scripts/sample_ddim.py -c CONFIG \
                                          [--ddim_eta DDIM_ETA] \
                                          [--respace_type RESPACE_TYPE] \
                                          [--respace_steps RESPACE_STEPS] \
-                                         [--micro_batch MICRO_BATCH] \
+                                         [--batch_size BATCH_SIZE] \
                                          [--mode {sample,interpolate,reconstruction}] \
                                          [--n_interpolate N_INTERPOLATE] \
                                          [--input_dir INPUT_DIR]
@@ -37,14 +37,14 @@ Advanced arguments:
   - `sample` (default): randomly sample images
   - `interpolate`: sample two random images and interpolate between them. Use `--n_interpolate` to specify the number of images in between.
   - `reconstruction`:  encode a real image from dataset with **DDIM inversion** (DDIM encoding), and then decode it with DDIM sampling.
-- `--micro_batch MICRO_BATCH`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
+- `--batch_size BATCH_SIZE`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
 
 See more details by running `python sample_ddim.py -h`.
 
 For example, to sample 50000 images from a pretrained CIFAR-10 model with 100 DDIM steps:
 
 ```shell
-accelerate-launch scripts/sample_ddim.py -c ./configs/ddim_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddim-cifar10 --respace_steps 100
+accelerate-launch scripts/sample_ddim.py -c ./configs/inference/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddim-cifar10 --respace_steps 100
 ```
 
 ## Evaluation

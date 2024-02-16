@@ -16,7 +16,7 @@ accelerate-launch scripts/sample_sdedit.py -c CONFIG \
                                            [--var_type VAR_TYPE] \
                                            [--respace_type RESPACE_TYPE] \
                                            [--respace_steps RESPACE_STEPS] \
-                                           [--micro_batch MICRO_BATCH]
+                                           [--batch_size BATCH_SIZE]
 ```
 
 This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
@@ -32,7 +32,7 @@ Basic arguments:
 Advanced arguments:
 
 - `--respace_steps RESPACE_STEPS`: faster sampling that uses respaced timesteps.
-- `--micro_batch MICRO_BATCH`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
+- `--batch_size BATCH_SIZE`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
 
 See more details by running `python sample_sdedit.py -h`.
 

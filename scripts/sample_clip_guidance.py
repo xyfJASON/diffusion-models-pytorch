@@ -12,6 +12,7 @@ from torchvision.utils import save_image
 
 import diffusions
 from utils.logger import get_logger
+from utils.load import load_weights
 from utils.misc import image_norm_to_float, instantiate_from_config, amortize
 
 
@@ -19,9 +20,8 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-c', '--config', type=str, required=True,
-        help='Path to training configuration file',
+        help='Path to inference configuration file',
     )
-    # arguments related to sampling
     parser.add_argument(
         '--seed', type=int, default=2022,
         help='Set random seed',
@@ -63,8 +63,8 @@ def get_parser():
         help='Path to directory saving samples',
     )
     parser.add_argument(
-        '--micro_batch', type=int, default=500,
-        help='Batch size on each process. Sample by batch is much faster',
+        '--batch_size', type=int, default=500,
+        help='Batch size on each process',
     )
     return parser
 
@@ -116,13 +116,8 @@ def main():
     model = instantiate_from_config(conf.model)
 
     # LOAD WEIGHTS
-    ckpt = torch.load(args.weights, map_location='cpu')
-    if 'ema' in ckpt:
-        model.load_state_dict(ckpt['ema']['shadow'])
-    elif 'model' in ckpt:
-        model.load_state_dict(ckpt['model'])
-    else:
-        model.load_state_dict(ckpt)
+    weights = load_weights(args.weights)
+    model.load_state_dict(weights)
     logger.info(f'Successfully load model from {args.weights}')
     logger.info('=' * 50)
 
@@ -136,10 +131,10 @@ def main():
     def sample():
         idx = 0
         img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
-        micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
-        folds = amortize(args.n_samples, micro_batch * accelerator.num_processes)
+        bspp = min(args.batch_size, math.ceil(args.n_samples / accelerator.num_processes))
+        folds = amortize(args.n_samples, bspp * accelerator.num_processes)
         for i, bs in enumerate(folds):
-            init_noise = torch.randn((micro_batch, *img_shape), device=device)
+            init_noise = torch.randn((bspp, *img_shape), device=device)
             samples = diffuser.sample(
                 model=accelerator.unwrap_model(model), init_noise=init_noise,
                 tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process)

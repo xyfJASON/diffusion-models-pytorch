@@ -12,6 +12,7 @@ from torchvision.utils import save_image
 
 import diffusions
 from utils.logger import get_logger
+from utils.load import load_weights
 from utils.misc import image_norm_to_float, instantiate_from_config, amortize
 
 
@@ -19,9 +20,8 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-c', '--config', type=str, required=True,
-        help='Path to training configuration file',
+        help='Path to inference configuration file',
     )
-    # arguments for sampling
     parser.add_argument(
         '--seed', type=int, default=2022,
         help='Set random seed',
@@ -65,8 +65,8 @@ def get_parser():
         help='Path to directory saving samples',
     )
     parser.add_argument(
-        '--micro_batch', type=int, default=500,
-        help='Batch size on each process. Sample by batch is much faster',
+        '--batch_size', type=int, default=500,
+        help='Batch size on each process',
     )
     return parser
 
@@ -118,13 +118,8 @@ if __name__ == '__main__':
     model = instantiate_from_config(conf.model)
 
     # LOAD WEIGHTS
-    ckpt = torch.load(args.weights, map_location='cpu')
-    if 'ema' in ckpt:
-        model.load_state_dict(ckpt['ema']['shadow'])
-    elif 'model' in ckpt:
-        model.load_state_dict(ckpt['model'])
-    else:
-        model.load_state_dict(ckpt)
+    weights = load_weights(args.weights)
+    model.load_state_dict(weights)
     logger.info('=' * 19 + ' Model Info ' + '=' * 19)
     logger.info(f'Successfully load model from {args.weights}')
     logger.info('=' * 50)
@@ -138,30 +133,23 @@ if __name__ == '__main__':
     @torch.no_grad()
     def sample():
         img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
-        micro_batch = min(args.micro_batch, math.ceil(args.n_samples_each_class / accelerator.num_processes))
-        batch_size = micro_batch * accelerator.num_processes
+        bspp = min(args.batch_size, math.ceil(args.n_samples_each_class / accelerator.num_processes))
         class_ids = args.class_ids
         if args.class_ids is None:
             class_ids = range(conf.data.num_classes)
-        logger.info(f'Will sample {args.n_samples_each_class} images '
-                    f'for each of the following class IDs: {class_ids}')
+        logger.info(f'Will sample {args.n_samples_each_class} images for each of the following class IDs: {class_ids}')
 
         for c in class_ids:
             os.makedirs(os.path.join(args.save_dir, f'class{c}'), exist_ok=True)
             idx = 0
             logger.info(f'Sampling class {c}')
-            folds = amortize(args.n_samples_each_class, batch_size)
+            folds = amortize(args.n_samples_each_class, bspp * accelerator.num_processes)
             for i, bs in enumerate(folds):
                 init_noise = torch.randn((bs, *img_shape), device=device)
                 labels = torch.full((bs, ), fill_value=c, device=device)
                 samples = diffuser.sample(
-                    model=accelerator.unwrap_model(model),
-                    init_noise=init_noise,
-                    model_kwargs=dict(y=labels),
-                    tqdm_kwargs=dict(
-                        desc=f'Fold {i}/{len(folds)}',
-                        disable=not accelerator.is_main_process,
-                    ),
+                    model=accelerator.unwrap_model(model), init_noise=init_noise, model_kwargs=dict(y=labels),
+                    tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
                 ).clamp(-1, 1)
                 samples = accelerator.gather(samples)[:bs]
                 if accelerator.is_main_process:

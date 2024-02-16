@@ -15,6 +15,7 @@ from torch.utils.data import DataLoader, Subset
 import diffusions
 from datasets import ImageDir
 from utils.logger import get_logger
+from utils.load import load_weights
 from utils.misc import image_norm_to_float, instantiate_from_config, amortize
 
 
@@ -22,7 +23,7 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-c', '--config', type=str, required=True,
-        help='Path to training configuration file',
+        help='Path to inference configuration file',
     )
     parser.add_argument(
         '--seed', type=int, default=2001,
@@ -53,8 +54,8 @@ def get_parser():
         help='Path to directory saving samples',
     )
     parser.add_argument(
-        '--micro_batch', type=int, default=500,
-        help='Batch size on each process. Sample by batch is much faster',
+        '--batch_size', type=int, default=500,
+        help='Batch size on each process',
     )
     parser.add_argument(
         '--mode', type=str, default='sample', choices=['sample', 'interpolate', 'reconstruction'],
@@ -116,13 +117,8 @@ def main():
     model = instantiate_from_config(conf.model)
 
     # LOAD WEIGHTS
-    ckpt = torch.load(args.weights, map_location='cpu')
-    if 'ema' in ckpt:
-        model.load_state_dict(ckpt['ema']['shadow'])
-    elif 'model' in ckpt:
-        model.load_state_dict(ckpt['model'])
-    else:
-        model.load_state_dict(ckpt)
+    weights = load_weights(args.weights)
+    model.load_state_dict(weights)
     logger.info('=' * 19 + ' Model Info ' + '=' * 19)
     logger.info(f'Successfully load model from {args.weights}')
     logger.info('=' * 50)
@@ -137,10 +133,10 @@ def main():
     def sample():
         idx = 0
         img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
-        micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
-        folds = amortize(args.n_samples, micro_batch * accelerator.num_processes)
+        bspp = min(args.batch_size, math.ceil(args.n_samples / accelerator.num_processes))
+        folds = amortize(args.n_samples, bspp * accelerator.num_processes)
         for i, bs in enumerate(folds):
-            init_noise = torch.randn((micro_batch, *img_shape), device=device)
+            init_noise = torch.randn((bspp, *img_shape), device=device)
             samples = diffuser.sample(
                 model=accelerator.unwrap_model(model), init_noise=init_noise,
                 tqdm_kwargs=dict(desc=f'Fold {i}/{len(folds)}', disable=not accelerator.is_main_process),
@@ -156,16 +152,16 @@ def main():
     def sample_interpolate():
         idx = 0
         img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
-        micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
+        bspp = min(args.batch_size, math.ceil(args.n_samples / accelerator.num_processes))
 
         def slerp(t, z1, z2):  # noqa
             theta = torch.acos(torch.sum(z1 * z2) / (torch.linalg.norm(z1) * torch.linalg.norm(z2)))
             return torch.sin((1 - t) * theta) / torch.sin(theta) * z1 + torch.sin(t * theta) / torch.sin(theta) * z2
 
-        folds = amortize(args.n_samples, micro_batch * accelerator.num_processes)
+        folds = amortize(args.n_samples, bspp * accelerator.num_processes)
         for i, bs in enumerate(folds):
-            z1 = torch.randn((micro_batch, *img_shape), device=device)
-            z2 = torch.randn((micro_batch, *img_shape), device=device)
+            z1 = torch.randn((bspp, *img_shape), device=device)
+            z2 = torch.randn((bspp, *img_shape), device=device)
             samples = torch.stack([
                 diffuser.sample(
                     model=accelerator.unwrap_model(model), init_noise=slerp(t, z1, z2),
@@ -187,7 +183,7 @@ def main():
     def sample_reconstruction():
         # build dataset
         if args.input_dir is None:
-            raise ValueError('input_dir must be specified when mode is reconstruction')
+            raise ValueError('input_dir is required when mode is reconstruction')
         transforms = T.Compose([
             T.Resize(conf.data.params.img_size),
             T.CenterCrop(conf.data.params.img_size),
@@ -197,8 +193,8 @@ def main():
         dataset = ImageDir(root=args.input_dir, transform=transforms)
         if args.n_samples < len(dataset):
             dataset = Subset(dataset=dataset, indices=torch.arange(args.n_samples))
-        micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
-        dataloader = DataLoader(dataset=dataset, batch_size=micro_batch, **conf.dataloader)
+        bspp = min(args.batch_size, math.ceil(len(dataset) / accelerator.num_processes))
+        dataloader = DataLoader(dataset=dataset, batch_size=bspp, num_workers=4, pin_memory=True, prefetch_factor=2)
         dataloader = accelerator.prepare(dataloader)  # type: ignore
         # sampling
         idx = 0

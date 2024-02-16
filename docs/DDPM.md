@@ -33,7 +33,7 @@ accelerate-launch scripts/sample_ddpm.py -c CONFIG \
                                          [--var_type VAR_TYPE] \
                                          [--respace_type RESPACE_TYPE] \
                                          [--respace_steps RESPACE_STEPS] \
-                                         [--micro_batch MICRO_BATCH] \
+                                         [--batch_size BATCH_SIZE] \
                                          [--mode {sample,denoise,progressive}] \
                                          [--n_denoise N_DENOISE] \
                                          [--n_progressive N_PROGRESSIVE]
@@ -53,14 +53,14 @@ Advanced arguments:
   - `sample` (default): randomly sample images
   - `denoise`: sample images with visualization of its denoising process.
   - `progressive`:  sample images with visualization of its progressive generation process (i.e. predicted $x_0$).
-- `--micro_batch MICRO_BATCH`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
+- `--batch_size BATCH_SIZE`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
 
 See more details by running `python sample_ddpm.py -h`.
 
 For example, to sample 50000 images from a pretrained CIFAR-10 model with 100 steps and "fixed_small" variance:
 
 ```shell
-accelerate-launch scripts/sample_ddpm.py -c ./configs/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddpm-cifar10 --respace_steps 100 --var_type fixed_small
+accelerate-launch scripts/sample_ddpm.py -c ./configs/inference/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddpm-cifar10 --respace_steps 100 --var_type fixed_small
 ```
 
 

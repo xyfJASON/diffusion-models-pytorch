@@ -1,17 +1,9 @@
-seed: 2022
-
 data:
-  target: datasets.lsun.LSUN
+  target: datasets.celebahq.CelebAHQ
   params:
-    dataroot: ~/data/LSUN
-    label: church
+    root: ~/data/CelebA-HQ/
     img_size: 256
   img_channels: 3
-
-dataloader:
-  num_workers: 4
-  pin_memory: true
-  prefetch_factor: 2
 
 model:
   target: models.pesser.model.Model

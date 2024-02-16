@@ -20,7 +20,7 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-c', '--config', type=str, required=True,
-        help='Path to training configuration file',
+        help='Path to inference configuration file',
     )
     parser.add_argument(
         '--seed', type=int, default=2022,
@@ -72,7 +72,7 @@ def get_parser():
         help='Parameter eta in DDIM sampling',
     )
     parser.add_argument(
-        '--micro_batch', type=int, default=1,
+        '--batch_size', type=int, default=1,
         help='Batch size on each process',
     )
     return parser
@@ -140,13 +140,12 @@ if __name__ == '__main__':
     @torch.no_grad()
     def sample():
         idx = 0
-        micro_batch = min(args.micro_batch, math.ceil(args.n_samples / accelerator.num_processes))
-        batch_size = micro_batch * accelerator.num_processes
-        folds = amortize(args.n_samples, batch_size)
+        bspp = min(args.batch_size, math.ceil(args.n_samples / accelerator.num_processes))
+        folds = amortize(args.n_samples, bspp * accelerator.num_processes)
         for i, bs in enumerate(folds):
-            init_noise = torch.randn((micro_batch, 4, args.height // 8, args.width // 8), device=device)
-            text_embed = model.text_encoder_encode([args.prompt] * micro_batch)
-            empty_embed = model.text_encoder_encode([''] * micro_batch)
+            init_noise = torch.randn((bspp, 4, args.height // 8, args.width // 8), device=device)
+            text_embed = model.text_encoder_encode([args.prompt] * bspp)
+            empty_embed = model.text_encoder_encode([''] * bspp)
             latents = diffuser.sample(
                 model=model.unet_forward, init_noise=init_noise,
                 uncond_conditioning=empty_embed,
