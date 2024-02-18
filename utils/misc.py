@@ -70,7 +70,9 @@ def find_resume_checkpoint(exp_dir: str, resume: str):
 def instantiate_from_config(conf, **extra_params):
     module, cls = conf['target'].rsplit('.', 1)
     cls = getattr(importlib.import_module(module, package=None), cls)
-    return cls(**conf.get('params', dict()), **extra_params)
+    params = conf.get('params', dict())
+    params.update(extra_params)
+    return cls(**params)
 
 
 class AverageMeter:
