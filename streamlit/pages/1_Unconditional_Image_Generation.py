@@ -16,6 +16,8 @@ from utils.misc import instantiate_from_config, image_norm_to_uint8
 
 @st.cache_resource
 def build_model(conf_model, weights_path):
+    build_model.clear()
+    torch.cuda.empty_cache()
     model = instantiate_from_config(conf_model)
     weights = load_weights(weights_path)
     model.load_state_dict(weights)
@@ -24,9 +26,9 @@ def build_model(conf_model, weights_path):
 
 @st.cache_resource
 def build_diffuser(conf_diffusion, sampler, device, var_type, respace_steps):
-    if sampler == 'DDPM':
+    if sampler == "DDPM":
         conf_diffusion["target"] = "diffusions.ddpm.DDPM"
-    elif sampler == 'DDIM':
+    elif sampler == "DDIM":
         conf_diffusion["target"] = "diffusions.ddim.DDIM"
     diffuser = instantiate_from_config(
         conf_diffusion,
@@ -38,7 +40,6 @@ def build_diffuser(conf_diffusion, sampler, device, var_type, respace_steps):
     return diffuser
 
 
-# noinspection PyUnusedLocal
 def main(
         st_components, config_path, weights_path, seed, sampler,
         respace_steps, batch_size, batch_count, var_type,
@@ -108,32 +109,35 @@ def streamlit():
     # PAGE TITLE
     st.title("Unconditional Image Generation")
 
-    # CONFIG & MODEL SELECTION
-    OK = True
-    col_left, col_right = st.columns([8, 1])
+    col_left, col_right = st.columns(2)
     with col_left:
         container_config_model = st.container(border=True)
         with container_config_model:
-            cols = st.columns(2)
-            with cols[0]:
-                config_list = glob.glob(os.path.join("configs", "inference", "**/*.yaml"), recursive=True)
-                config_list = sorted(config_list)
-                config_path = st.selectbox("Config file", options=config_list, index=None)
-                if config_path is None:
-                    OK = False
-            with cols[1]:
-                extensions = ["pt", "pth", "ckpt", "safetensors"]
-                weights_list = []
-                for ext in extensions:
-                    weights_list.extend(glob.glob(os.path.join("weights", f"**/*.{ext}"), recursive=True))
-                weights_list = sorted(weights_list)
-                weights_path = st.selectbox("Model", options=weights_list, index=None)
-                if weights_path is None:
-                    OK = False
+            # CONFIG SELECTION
+            config_list = glob.glob(os.path.join("configs", "inference", "**/*.yaml"), recursive=True)
+            config_list = sorted(config_list)
+            config_path = st.selectbox("Config file", options=config_list, index=None)
 
-    # BUTTON
+            # MODEL SELECTION
+            extensions = ["pt", "pth", "ckpt", "safetensors"]
+            weights_list = []
+            for ext in extensions:
+                weights_list.extend(glob.glob(os.path.join("weights", f"**/*.{ext}"), recursive=True))
+            weights_list = sorted(weights_list)
+            weights_path = st.selectbox("Model", options=weights_list, index=None)
+
+        # BUTTON
+        bttn_generate = st.button(
+            "Generate", use_container_width=True, type="primary",
+            disabled=config_path is None or weights_path is None,
+        )
+
+    # IMAGE DISPLAY
     with col_right:
-        bttn_generate = st.button("Generate", disabled=not OK, use_container_width=True, type="primary")
+        container_image_meta = st.container(border=True)
+        with container_image_meta:
+            st.markdown("Output")
+            placeholder_image = st.empty()
 
     with st.sidebar:
         # BASIC OPTIONS
@@ -162,12 +166,6 @@ def streamlit():
             var_type = st.selectbox("Type of variance", options=["default", "fixed_small", "fixed_large", "learned_range"])
             if var_type == "default":
                 var_type = None
-
-    # IMAGE DISPLAY
-    container_image_meta = st.container(border=True)
-    with container_image_meta:
-        st.markdown("Output")
-        placeholder_image = st.empty()
 
     # GENERATE IMAGES
     if bttn_generate:
