@@ -6,18 +6,28 @@
 
 ## Training
 
+This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the script on different platforms.
+
 ```shell
-accelerate-launch scripts/train_ddpm_cfg.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
+accelerate-launch scripts/train_ddpm_cfg.py -c CONFIG [-e EXP_DIR] [--key value ...]
 ```
 
-- This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
-- Results (logs, checkpoints, tensorboard, etc.) of each run will be saved to `EXP_DIR`. If `EXP_DIR` is not specified, they will be saved to `runs/exp-{current time}/`.
-- To modify some configuration items without creating a new configuration file, you can pass `--key value` pairs to the script. For example, the default probability to disable guidance in training (`p_uncond`) in `./configs/classifier_free_cifar10.yaml` is 0.2, and if you want to change it to 0.1, you can simply pass `--train.p_uncond 0.1`.
+Arguments:
+
+- `-c CONFIG`: path to the training configuration file.
+- `-e EXP_DIR`: results (logs, checkpoints, tensorboard, etc.) will be saved to `EXP_DIR`. Default to `runs/exp-{current time}/`.
+- `--key value`: modify configuration items in `CONFIG` via CLI.
 
 For example, to train on CIFAR-10 with default settings:
 
 ```shell
 accelerate-launch scripts/train_ddpm_cfg.py -c ./configs/ddpm_cfg_cifar10.yaml
+```
+
+To change the default `p_uncond` (the probability to disable condition in training) in `./configs/ddpm_cfg_cifar10.yaml` from 0.2 to 0.1:
+
+```shell
+accelerate-launch scripts/train_ddpm_cfg.py -c ./configs/ddpm_cfg_cifar10.yaml --train.p_uncond 0.1
 ```
 
 

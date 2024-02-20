@@ -6,6 +6,8 @@
 
 ## Sampling
 
+This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the script on different platforms.
+
 ```shell
 accelerate-launch scripts/sample_ddim.py -c CONFIG \
                                          --weights WEIGHTS \
@@ -21,11 +23,9 @@ accelerate-launch scripts/sample_ddim.py -c CONFIG \
                                          [--input_dir INPUT_DIR]
 ```
 
-This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
-
 Basic arguments:
 
-- `-c CONFIG`: path to the configuration file.
+- `-c CONFIG`: path to the inference configuration file.
 - `--weights WEIGHTS`: path to the model weights (checkpoint) file.
 - `--n_samples N_SAMPLES`: number of samples.
 - `--save_dir SAVE_DIR`: path to the directory where samples will be saved.
@@ -34,9 +34,9 @@ Advanced arguments:
 
 - `--respace_steps RESPACE_STEPS`: faster sampling that uses respaced timesteps.
 - `--mode MODE`: choose a sampling mode, the options are:
-  - `sample` (default): randomly sample images
-  - `interpolate`: sample two random images and interpolate between them. Use `--n_interpolate` to specify the number of images in between.
-  - `reconstruction`:  encode a real image from dataset with **DDIM inversion** (DDIM encoding), and then decode it with DDIM sampling.
+  - "sample" (default): randomly sample images
+  - "interpolate": sample two random images and interpolate between them. Use `--n_interpolate` to specify the number of images in between.
+  - "reconstruction":  encode a real image from dataset with **DDIM inversion** (DDIM encoding), and then decode it with DDIM sampling.
 - `--batch_size BATCH_SIZE`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
 
 See more details by running `python sample_ddim.py -h`.

@@ -6,18 +6,28 @@
 
 ## Training
 
+This repo uses [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) for how to launch the script on different platforms.
+
 ```shell
-accelerate-launch scripts/train_ddpm.py [-c CONFIG] [-e EXP_DIR] [--xxx.yyy zzz ...]
+accelerate-launch scripts/train_ddpm.py -c CONFIG [-e EXP_DIR] [--key value ...]
 ```
 
-- This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) for how to launch the scripts on different platforms.
-- Results (logs, checkpoints, tensorboard, etc.) of each run will be saved to `EXP_DIR`. If `EXP_DIR` is not specified, they will be saved to `runs/exp-{current time}/`.
-- To modify some configuration items without creating a new configuration file, you can pass `--key value` pairs to the script. For example, the default variance schedule in `./configs/ddpm_cifar10.yaml` is linear, and if you want to change it to cosine, you can simply pass `--diffusion.params.beta_schedule cosine`.
+Arguments:
+
+- `-c CONFIG`: path to the training configuration file.
+- `-e EXP_DIR`: results (logs, checkpoints, tensorboard, etc.) will be saved to `EXP_DIR`. Default to `runs/exp-{current time}/`.
+- `--key value`: modify configuration items in `CONFIG` via CLI.
 
 For example, to train on CIFAR-10 with default settings:
 
 ```shell
 accelerate-launch scripts/train_ddpm.py -c ./configs/ddpm_cifar10.yaml
+```
+
+To change the default variance schedule in `./configs/ddpm_cifar10.yaml` from linear to cosine:
+
+```shell
+accelerate-launch scripts/train_ddpm.py -c ./configs/ddpm_cifar10.yaml --diffusion.params.beta_schedule cosine
 ```
 
 
@@ -41,7 +51,7 @@ accelerate-launch scripts/sample_ddpm.py -c CONFIG \
 
 Basic arguments:
 
-- `-c CONFIG`: path to the configuration file.
+- `-c CONFIG`: path to the inference configuration file.
 - `--weights WEIGHTS`: path to the model weights (checkpoint) file.
 - `--n_samples N_SAMPLES`: number of samples.
 - `--save_dir SAVE_DIR`: path to the directory where samples will be saved.
@@ -50,9 +60,9 @@ Advanced arguments:
 
 - `--respace_steps RESPACE_STEPS`: faster sampling that uses respaced timesteps.
 - `--mode MODE`: choose a sampling mode, the options are:
-  - `sample` (default): randomly sample images
-  - `denoise`: sample images with visualization of its denoising process.
-  - `progressive`:  sample images with visualization of its progressive generation process (i.e. predicted $x_0$).
+  - "sample" (default): randomly sample images
+  - "denoise": sample images with visualization of its denoising process.
+  - "progressive":  sample images with visualization of its progressive generation process (i.e. predicted $x_0$).
 - `--batch_size BATCH_SIZE`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
 
 See more details by running `python sample_ddpm.py -h`.
@@ -172,18 +182,18 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
 **Denoising process**:
 
 <p align="center">
-  <img src="../assets/ddpm-cifar10-denoise.png" width=50% />
+  <img src="../assets/ddpm-cifar10-denoise.png" width=60% />
 </p>
 <p align="center">
-  <img src="../assets/ddpm-celebahq-denoise.png" width=50% />
+  <img src="../assets/ddpm-celebahq-denoise.png" width=60% />
 </p>
 
 
 **Progressive generation**:
 
 <p align="center">
-  <img src="../assets/ddpm-cifar10-progressive.png" width=50% />
+  <img src="../assets/ddpm-cifar10-progressive.png" width=60% />
 </p>
 <p align="center">
-  <img src="../assets/ddpm-celebahq-progressive.png" width=50% />
+  <img src="../assets/ddpm-celebahq-progressive.png" width=60% />
 </p>

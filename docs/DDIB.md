@@ -6,6 +6,8 @@
 
 ## Sampling
 
+This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the script on different platforms.
+
 ```shell
 accelerate-launch scripts/sample_ddib.py -c CONFIG \
                                          --weights WEIGHTS \
@@ -18,8 +20,6 @@ accelerate-launch scripts/sample_ddib.py -c CONFIG \
                                          [--respace_steps RESPACE_STEPS] \
                                          [--batch_size BATCH_SIZE]
 ```
-
-This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the scripts on different platforms.
 
 Basic arguments:
 
