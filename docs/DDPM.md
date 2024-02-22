@@ -70,7 +70,7 @@ See more details by running `python sample_ddpm.py -h`.
 For example, to sample 50000 images from a pretrained CIFAR-10 model with 100 steps and "fixed_small" variance:
 
 ```shell
-accelerate-launch scripts/sample_ddpm.py -c ./configs/inference/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddpm-cifar10 --respace_steps 100 --var_type fixed_small
+accelerate-launch scripts/sample_ddpm.py -c ./configs/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddpm-cifar10 --respace_steps 100 --var_type fixed_small
 ```
 
 

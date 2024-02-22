@@ -44,7 +44,7 @@ See more details by running `python sample_ddim.py -h`.
 For example, to sample 50000 images from a pretrained CIFAR-10 model with 100 DDIM steps:
 
 ```shell
-accelerate-launch scripts/sample_ddim.py -c ./configs/inference/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddim-cifar10 --respace_steps 100
+accelerate-launch scripts/sample_ddim.py -c ./configs/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddim-cifar10 --respace_steps 100
 ```
 
 ## Evaluation

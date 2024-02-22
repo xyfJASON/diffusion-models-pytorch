@@ -43,9 +43,9 @@ All the checkpoints and training logs trained by this repository are uploaded to
 
 
 
-### Loading models and weights from other repositories
+### Loading models from other repositories
 
-Training a diffusion model on a large-scale dataset from scratch is time-consuming, especially with limited devices. Thus, this repository supports loading models and weights from other open source repositories, as listed below.
+Training a diffusion model on a large-scale dataset from scratch is time-consuming, especially with limited devices. Thus, this repository supports loading models from other open source repositories, as listed below.
 
 <table style="text-align: center">
     <tr>
@@ -60,55 +60,83 @@ Training a diffusion model on a large-scale dataset from scratch is time-consumi
         <td>CelebA-HQ</td>
         <td>256x256</td>
         <td><a href="https://github.com/pesser/pytorch_diffusion">pesser/pytorch_diffusion</a></td>
-        <td><a href="./configs/inference/pesser/pytorch_diffusion/ema_diffusion_celebahq_model-560000.yaml">config</a></td>
+        <td><a href="./weights/pesser/pytorch_diffusion/ema_diffusion_celebahq_model-560000.yaml">config</a></td>
     </tr>
     <tr>
         <td>LSUN-Church</td>
         <td>256x256</td>
         <td><a href="https://github.com/pesser/pytorch_diffusion">pesser/pytorch_diffusion</a></td>
-        <td><a href="./configs/inference/pesser/pytorch_diffusion/ema_diffusion_lsun_church_model-4432000.yaml">config</a></td>
+        <td><a href="./weights/pesser/pytorch_diffusion/ema_diffusion_lsun_church_model-4432000.yaml">config</a></td>
     </tr>
     <tr>
-        <td rowspan="4">ADM by openai</td>
+        <td rowspan="6">ADM by openai</td>
         <td>ImageNet (unconditional)</td>
         <td>256x256</td>
         <td><a href="https://github.com/openai/guided-diffusion">openai/guided-diffusion</a></td>
-        <td><a href="./configs/inference/openai/guided-diffusion/256x256_diffusion_uncond.yaml">config</a></td>
+        <td><a href="./weights/openai/guided-diffusion/256x256_diffusion_uncond.yaml">config</a></td>
     </tr>
     <tr>
         <td>ImageNet (conditional)</td>
         <td>256x256</td>
         <td><a href="https://github.com/openai/guided-diffusion">openai/guided-diffusion</a></td>
-        <td><a href="./configs/inference/openai/guided-diffusion/256x256_diffusion.yaml">config</a></td>
+        <td><a href="./weights/openai/guided-diffusion/256x256_diffusion.yaml">config</a></td>
     </tr>
     <tr>
         <td>AFHQ-Dog</td>
         <td>256x256</td>
         <td><a href="https://github.com/jychoi118/ilvr_adm">jychoi118/ilvr_adm</a></td>
-        <td><a href="./configs/inference/jychoi118/ilvr_adm/afhqdog_p2.yaml">config</a></td>
+        <td><a href="./weights/jychoi118/ilvr_adm/afhqdog_p2.yaml">config</a></td>
+    </tr>
+    <tr>
+        <td>AFHQ-Cat</td>
+        <td>256x256</td>
+        <td><a href="https://github.com/ChenWu98/cycle-diffusion">ChenWu98/cycle-diffusion</a></td>
+        <td><a href="./weights/ChenWu98/cycle-diffusion/cat_ema_0.9999_050000.yaml">config</a></td>
+    </tr>
+    <tr>
+        <td>AFHQ-Wild</td>
+        <td>256x256</td>
+        <td><a href="https://github.com/ChenWu98/cycle-diffusion">ChenWu98/cycle-diffusion</a></td>
+        <td><a href="./weights/ChenWu98/cycle-diffusion/wild_ema_0.9999_050000.yaml">config</a></td>
     </tr>
     <tr>
         <td>CelebA-HQ</td>
         <td>256x256</td>
         <td><a href="https://github.com/andreas128/RePaint">andreas128/RePaint</a></td>
-        <td><a href="./configs/inference/andreas128/RePaint/celebahq_256_250000.yaml">config</a></td>
+        <td><a href="./weights/andreas128/RePaint/celeba256_250000.yaml">config</a></td>
     </tr>
     <tr>
         <td rowspan="2">Stable Diffusion (v1.5 / v2.1)</td>
         <td>LAION</td>
         <td>512x512</td>
         <td><a href="https://github.com/runwayml/stable-diffusion">runwayml/stable-diffusion</a></td>
-        <td><a href="./configs/inference/runwayml/stable-diffusion/v1-5-pruned-emaonly.yaml">config</a></td>
+        <td><a href="weights/stablediffusion/v1-inference.yaml">config</a></td>
     </tr>
     <tr>
         <td>LAION</td>
         <td>768x768</td>
         <td><a href="https://github.com/Stability-AI/stablediffusion">Stability-AI/stablediffusion</a></td>
-        <td><a href="./configs/inference/Stability-AI/stablediffusion/v2-1_768-ema-pruned.yaml">config</a></td>
+        <td><a href="weights/stablediffusion/v2-inference-v.yaml">config</a></td>
     </tr>
 </table>
 
-The configuration files are located at `./configs/inference/<github username>/<repo name>/<weights filename>.yaml`, so it should be easy to find the corresponding weights.
+The configuration files are located at `./weights/<github username>/<repo name>/<weights filename>.yaml`, so it should be easy to find the corresponding model weights.
+Please put the downloaded weights next to the configuration files. For example:
+
+```text
+weights
+├── pesser
+│   └── pytorch_diffusion
+│       ├── ema_diffusion_celebahq_model-560000.pt
+│       └── ema_diffusion_celebahq_model-560000.yaml
+├── openai
+│   └── guided-diffusion
+│       ├── 256x256_diffusion_uncond.pt
+│       ├── 256x256_diffusion_uncond.yaml
+│       ├── 256x256_diffusion.pt
+│       └── 256x256_diffusion.yaml
+└── ...
+```
 
 <br/>
 

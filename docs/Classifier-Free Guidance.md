@@ -72,7 +72,7 @@ See more details by running `python sample_cfg.py -h`.
 For example, to sample 10 images for class (0, 2, 4, 8) from a pretrained CIFAR-10 model with guidance scale 3 using 100 DDIM steps:
 
 ```shell
-accelerate-launch scripts/sample_cfg.py -c ./configs/inference/ddpm_cfg_cifar10.yaml --weights /path/to/model/weights --n_samples_each_class 10 --save_dir ./samples/cfg-cifar10 --guidance_scale 3 --class_ids 0 2 4 8 --ddim --respace_steps 100
+accelerate-launch scripts/sample_cfg.py -c ./configs/ddpm_cfg_cifar10.yaml --weights /path/to/model/weights --n_samples_each_class 10 --save_dir ./samples/cfg-cifar10 --guidance_scale 3 --class_ids 0 2 4 8 --ddim --respace_steps 100
 ```
 
 

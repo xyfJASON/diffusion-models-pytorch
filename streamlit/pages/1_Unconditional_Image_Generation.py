@@ -41,7 +41,7 @@ def build_diffuser(conf_diffusion, sampler, device, var_type, respace_steps):
 
 
 def main(
-        st_components, config_path, weights_path, seed, sampler,
+        st_components, conf, weights_path, seed, sampler,
         respace_steps, batch_size, batch_count, var_type,
 ):
     # SYSTEM SETUP
@@ -51,23 +51,13 @@ def main(
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
 
-    # LOAD CONFIG
-    conf = OmegaConf.load(config_path)
-
     # BUILD DIFFUSER
     conf_diffusion = OmegaConf.to_container(conf.diffusion)
     diffuser = build_diffuser(conf_diffusion, sampler, device, var_type, respace_steps)
 
     # BUILD MODEL & LOAD WEIGHTS
-    try:
-        conf_model = OmegaConf.to_container(conf.model)
-        model = build_model(conf_model, weights_path)
-    except RuntimeError:
-        st_components["container_config_model"].error(
-            "Failed to load model weights. Please check if "
-            "the config file and weights file are compatible."
-        )
-        st.stop()
+    conf_model = OmegaConf.to_container(conf.model)
+    model = build_model(conf_model, weights_path)
     model.to(device).eval()
 
     # START SAMPLING
@@ -109,50 +99,47 @@ def streamlit():
     # PAGE TITLE
     st.title("Unconditional Image Generation")
 
-    col_left, col_right = st.columns(2)
-    with col_left:
-        container_config_model = st.container(border=True)
-        with container_config_model:
-            # CONFIG SELECTION
-            config_list = glob.glob(os.path.join("configs", "inference", "**/*.yaml"), recursive=True)
-            config_list = sorted(config_list)
-            config_path = st.selectbox("Config file", options=config_list, index=None)
+    # MODEL SELECTION
+    cols = st.columns([7, 3])
+    with cols[0]:
+        extensions = ["pt", "pth", "ckpt", "safetensors"]
+        weights_list = []
+        for ext in extensions:
+            weights_list.extend(glob.glob(os.path.join("weights", f"**/*.{ext}"), recursive=True))
+        weights_list = [w[8:] for w in sorted(weights_list)]
+        weights_path = st.selectbox("Model", options=weights_list, index=None)
+        weights_path = os.path.join("weights", weights_path) if weights_path else None
 
-            # MODEL SELECTION
-            extensions = ["pt", "pth", "ckpt", "safetensors"]
-            weights_list = []
-            for ext in extensions:
-                weights_list.extend(glob.glob(os.path.join("weights", f"**/*.{ext}"), recursive=True))
-            weights_list = sorted(weights_list)
-            weights_path = st.selectbox("Model", options=weights_list, index=None)
+    # BUTTON
+    with cols[1]:
+        cols[1].markdown("<div style='width: 1px; height: 28px'></div>", unsafe_allow_html=True)
+        bttn_generate = st.button("Generate", use_container_width=True, type="primary", disabled=weights_path is None)
 
-        # BUTTON
-        bttn_generate = st.button(
-            "Generate", use_container_width=True, type="primary",
-            disabled=config_path is None or weights_path is None,
-        )
+    # LOAD CONFIG
+    conf = None
+    if weights_path is not None:
+        config_path = os.path.splitext(weights_path)[0] + ".yaml"
+        conf = OmegaConf.load(config_path)
 
     # IMAGE DISPLAY
-    with col_right:
-        container_image_meta = st.container(border=True)
-        with container_image_meta:
-            st.markdown("Output")
-            placeholder_image = st.empty()
+    container_image_meta = st.container(border=True)
+    with container_image_meta:
+        st.markdown("Output")
+        placeholder_image = st.empty()
 
     with st.sidebar:
         # BASIC OPTIONS
-        expander_basic_options = st.expander("Basic options", expanded=True)
-        with expander_basic_options:
+        with st.expander("Basic options", expanded=True):
+            seed = st.number_input("Seed", min_value=-1, max_value=2**32-1, value=-1, step=1)
+            if seed == -1:
+                seed = np.random.randint(0, 2**32-1)
+
             cols = st.columns(2)
             with cols[0]:
-                seed = st.number_input("Seed", min_value=-1, max_value=2**32-1, value=-1, step=1)
-                if seed == -1:
-                    seed = np.random.randint(0, 2**32-1)
-            with cols[1]:
                 sampler = st.selectbox("Sampler", options=["DDPM", "DDIM"])
-
-            step_options = list(range(1, 20, 1)) + list(range(20, 100, 5)) + list(range(100, 1001, 50))
-            respace_steps = st.select_slider("Sample steps", options=step_options, value=50)
+            with cols[1]:
+                max_value = conf.diffusion.params.total_steps if conf else 1000
+                respace_steps = st.number_input("Sample steps", min_value=1, max_value=max_value, value=50)
 
             cols = st.columns(2)
             with cols[0]:
@@ -161,24 +148,20 @@ def streamlit():
                 batch_count = st.number_input("Batch count", min_value=1, value=1)
 
         # ADVANCED OPTIONS
-        expander_advanced_options = st.expander("Advanced options")
-        with expander_advanced_options:
-            var_type = st.selectbox("Type of variance", options=["default", "fixed_small", "fixed_large", "learned_range"])
-            if var_type == "default":
-                var_type = None
+        with st.expander("Advanced options"):
+            options = ["fixed_small", "fixed_large", "learned_range"]
+            if conf:
+                options.insert(0, options.pop(options.index(conf.diffusion.params.var_type)))
+            var_type = st.selectbox("Type of variance", options=options)
 
     # GENERATE IMAGES
     if bttn_generate:
-        st_components = dict(
-            container_config_model=container_config_model,
-            expander_advanced_options=expander_advanced_options,
-            expander_basic_options=expander_basic_options,
-            container_image_meta=container_image_meta,
-            placeholder_image=placeholder_image,
-        )
         main(
-            st_components=st_components,
-            config_path=config_path,
+            st_components=dict(
+                container_image_meta=container_image_meta,
+                placeholder_image=placeholder_image,
+            ),
+            conf=conf,
             weights_path=weights_path,
             seed=seed,
             sampler=sampler,

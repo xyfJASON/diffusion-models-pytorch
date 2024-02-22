@@ -43,7 +43,7 @@ def build_diffuser(conf_diffusion, sampler, device, respace_steps, cfg_scale):
 
 
 def main(
-        st_components, config_path, weights_path, seed, sampler, respace_steps,
+        st_components, conf, weights_path, seed, sampler, respace_steps,
         pos_prompt, neg_prompt, height, width, cfg_scale, batch_size, batch_count,
 ):
     # SYSTEM SETUP
@@ -52,9 +52,6 @@ def main(
         np.random.seed(seed)
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-
-    # LOAD CONFIG
-    conf = OmegaConf.load(config_path)
 
     # BUILD DIFFUSER
     conf_diffusion = OmegaConf.to_container(conf.diffusion)
@@ -111,11 +108,12 @@ def streamlit():
     st.title("Stable Diffusion v1.5")
 
     # CONFIG PATH
-    config_path = "./configs/inference/runwayml/stable-diffusion/v1-5-pruned-emaonly.yaml"
+    config_path = "./weights/stablediffusion/v1-inference.yaml"
+    conf = OmegaConf.load(config_path)
 
-    # MODEL SELECTION
     cols = st.columns(2)
     with cols[0]:
+        # MODEL SELECTION
         container_model = st.container(border=False)
         with container_model:
             extensions = ["pt", "pth", "ckpt", "safetensors"]
@@ -124,9 +122,6 @@ def streamlit():
                 weights_list.extend(glob.glob(os.path.join("weights", "stablediffusion", f"**/*.{ext}"), recursive=True))
             weights_list = [w[24:] for w in sorted(weights_list)]
             weights_path = st.selectbox("Model", options=weights_list, index=None)
-
-    col_left, col_right = st.columns(2)
-    with col_left:
         # PROMPT BOX
         with st.container(border=True):
             pos_prompt = st.text_area("Prompt", value="A photo of a cat", height=200)
@@ -134,14 +129,15 @@ def streamlit():
                 "Negative prompt", height=200,
                 value="lowres, bad anatomy, extra digit, fewer digits, cropped, worst quality, low quality",
             )
+
+    with cols[1]:
         # BUTTON
+        cols[1].markdown("<div style='width: 1px; height: 28px'></div>", unsafe_allow_html=True)
         bttn_generate = st.button(
             "Generate", use_container_width=True, type="primary",
             disabled=config_path is None or weights_path is None,
         )
-
-    # IMAGE DISPLAY
-    with col_right:
+        # IMAGE DISPLAY
         container_image_meta = st.container(border=True)
         with container_image_meta:
             st.markdown("Output")
@@ -151,16 +147,16 @@ def streamlit():
         # BASIC OPTIONS
         expander_basic_options = st.expander("Basic options", expanded=True)
         with expander_basic_options:
+            seed = st.number_input("Seed", min_value=-1, max_value=2**32-1, value=-1, step=1)
+            if seed == -1:
+                seed = np.random.randint(0, 2**32-1)
+
             cols = st.columns(2)
             with cols[0]:
-                seed = st.number_input("Seed", min_value=-1, max_value=2**32-1, value=-1, step=1)
-                if seed == -1:
-                    seed = np.random.randint(0, 2**32-1)
-            with cols[1]:
                 sampler = st.selectbox("Sampler", options=["DDPM", "DDIM"])
-
-            step_options = list(range(1, 20, 1)) + list(range(20, 100, 5)) + list(range(100, 1001, 50))
-            respace_steps = st.select_slider("Sample steps", options=step_options, value=20)
+            with cols[1]:
+                max_value = conf.diffusion.params.total_steps
+                respace_steps = st.number_input("Sample steps", min_value=1, max_value=max_value, value=20)
 
             cols = st.columns(2)
             with cols[0]:
@@ -185,7 +181,7 @@ def streamlit():
                 container_image_meta=container_image_meta,
                 placeholder_image=placeholder_image,
             ),
-            config_path=config_path,
+            conf=conf,
             weights_path=weights_path,
             seed=seed,
             sampler=sampler,
