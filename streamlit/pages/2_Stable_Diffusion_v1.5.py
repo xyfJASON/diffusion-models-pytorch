@@ -33,7 +33,7 @@ def build_diffuser(conf_diffusion, sampler, device, respace_steps, cfg_scale):
         conf_diffusion["target"] = "diffusions.DDIMCFG"
     diffuser = instantiate_from_config(
         conf_diffusion,
-        cond_kwarg="context",
+        cond_kwarg="text_embed",
         respace_type=None if respace_steps is None else "uniform",
         respace_steps=respace_steps,
         guidance_scale=cfg_scale,
@@ -77,19 +77,20 @@ def main(
             text_embed = model.text_encoder_encode([pos_prompt] * batch_size)
             neg_embed = model.text_encoder_encode([neg_prompt] * batch_size)
             samples = diffuser.sample(
-                model=model.unet_forward, init_noise=init_noise,
+                model=model, init_noise=init_noise,
                 uncond_conditioning=neg_embed,
-                model_kwargs=dict(context=text_embed),
+                model_kwargs=dict(text_embed=text_embed),
                 tqdm_kwargs=dict(desc=f'Fold {i}/{batch_count}'),
             )
-            samples = model.autoencoder_decode(samples).clamp(-1, 1)
+            samples = model.decode_latent(samples).clamp(-1, 1)
             samples = image_norm_to_uint8(samples)
             samples = samples.permute(0, 2, 3, 1).cpu().numpy()
         sample_list.extend([s for s in samples])
     end_time = time.time()
     with st_components["placeholder_image"]:
         st.image(sample_list, output_format="PNG")
-    st_components["container_image_meta"].text(f"Seed: {seed}    Time taken: {end_time - start_time:.2f} seconds")
+    with st_components["container_image_meta"]:
+        st.text(f"Seed: {seed}    Time taken: {end_time - start_time:.2f} seconds")
 
 
 def streamlit():

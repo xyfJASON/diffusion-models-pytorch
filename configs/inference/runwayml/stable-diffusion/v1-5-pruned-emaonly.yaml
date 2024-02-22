@@ -6,7 +6,7 @@ model:
     text_encoder_config:
       target: models.stablediffusion.text_encoders.FrozenCLIPEmbedder
 
-    autoencoder_config:
+    vae_config:
       target: models.stablediffusion.autoencoder.AutoEncoderKL
       params:
         embed_dim: 4
