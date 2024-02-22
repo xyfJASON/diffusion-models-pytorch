@@ -8,7 +8,7 @@ class BaseLatent(nn.Module):
         super().__init__()
         self.register_buffer('scale_factor', torch.tensor(scale_factor))
 
-    def forward(self, x: Tensor, timessteps: Tensor):
+    def forward(self, x: Tensor, timesteps: Tensor):
         raise NotImplementedError
 
     def encode_latent(self, x: Tensor):

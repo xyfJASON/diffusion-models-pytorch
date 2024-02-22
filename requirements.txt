@@ -10,6 +10,8 @@ torch~=2.1.0
 torchvision~=0.16.0
 accelerate~=0.23.0
 transformers~=4.37.2
+diffusers~=0.21.4
 safetensors~=0.4.2
 open-clip-torch
+timm~=0.9.12
 streamlit~=1.31.0

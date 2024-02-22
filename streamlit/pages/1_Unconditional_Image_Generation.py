@@ -10,6 +10,7 @@ import torch
 import numpy as np
 import streamlit as st
 
+from models.base_latent import BaseLatent
 from utils.load import load_weights
 from utils.misc import instantiate_from_config, image_norm_to_uint8
 
@@ -59,6 +60,7 @@ def main(
     conf_model = OmegaConf.to_container(conf.model)
     model = build_model(conf_model, weights_path)
     model.to(device).eval()
+    is_latent = isinstance(model, BaseLatent)
 
     # START SAMPLING
     start_time = time.time()
@@ -67,12 +69,19 @@ def main(
         with st_components["placeholder_image"]:
             st.write(f"Generating images... {i}/{batch_count}")
         with torch.no_grad():
-            img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
+            if is_latent:
+                img_shape = (4, conf.data.params.img_size // 8, conf.data.params.img_size // 8)
+            else:
+                img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
             init_noise = torch.randn((batch_size, *img_shape), device=device)
             samples = diffuser.sample(
                 model=model, init_noise=init_noise,
                 tqdm_kwargs=dict(desc=f'Fold {i}/{batch_count}'),
-            ).clamp(-1, 1)
+            )
+            if is_latent:
+                samples = model.decode_latent(samples).clamp(-1, 1)
+            else:
+                samples = samples.clamp(-1, 1)
         samples = image_norm_to_uint8(samples)
         samples = samples.permute(0, 2, 3, 1).cpu().numpy()
         sample_list.extend([s for s in samples])
@@ -80,6 +89,7 @@ def main(
     with st_components["placeholder_image"]:
         st.image(sample_list, output_format="PNG")
     st_components["container_image_meta"].text(f"Seed: {seed}    Time taken: {end_time - start_time:.2f} seconds")
+    torch.cuda.empty_cache()
 
 
 def streamlit():

@@ -66,6 +66,8 @@ class DDPMCFG(DDPM):
             pred_eps_uncond = out_uncond['pred_eps']
             # combine
             pred_eps = (1 - guidance_scale) * pred_eps_uncond + guidance_scale * pred_eps_cond
+            if self.var_type == 'learned_range':
+                pred_eps = torch.cat([pred_eps, model_output_cond[:, pred_eps.shape[1]:]], dim=1)
             with self.hack_objective('pred_eps'):
                 out = self.p_sample(pred_eps, img, t, t_prev, var_type, clip_denoised)
             img = out['sample']

@@ -1,0 +1,38 @@
+data:
+  target: datasets.imagenet.ImageNet
+  params:
+    root: ~/data/ImageNet/
+    img_size: 256
+  img_channels: 3
+  num_classes: 1000
+
+model:
+  target: models.dit.dit.DiT
+  params:
+    scale_factor: 0.18215
+
+    vae_config:
+      target: models.dit.autoencoder.AutoEncoderKL
+      params:
+        from_pretrained: stabilityai/sd-vae-ft-ema
+
+    vit_config:
+      target: models.dit.model.DiT
+      params:
+        input_size: 32
+        patch_size: 2
+        hidden_size: 1152
+        depth: 28
+        num_heads: 16
+        num_classes: 1000
+
+diffusion:
+  target: diffusions.ddpm.DDPM
+  params:
+    total_steps: 1000
+    beta_schedule: linear
+    beta_start: 0.0001
+    beta_end: 0.02
+    objective: pred_eps
+    clip_denoised: false
+    var_type: learned_range
