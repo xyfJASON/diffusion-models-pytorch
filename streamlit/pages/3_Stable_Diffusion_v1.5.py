@@ -14,19 +14,22 @@ from utils.load import load_weights
 from utils.misc import instantiate_from_config, image_norm_to_uint8
 
 
+WEIGHTS_PREFIX = "weights/stablediffusion"
+
+
 @st.cache_resource
 def build_model(conf_model, weights_path):
     build_model.clear()
     torch.cuda.empty_cache()
     assert conf_model["target"] == "models.stablediffusion.stablediffusion.StableDiffusion"
     model = instantiate_from_config(conf_model)
-    weights = load_weights(os.path.join("weights/stablediffusion", weights_path))
+    weights = load_weights(os.path.join(WEIGHTS_PREFIX, weights_path))
     model.load_state_dict(weights)
     return model
 
 
 @st.cache_resource
-def build_diffuser(conf_diffusion, sampler, device, respace_steps, cfg_scale):
+def build_diffuser(conf_diffusion, sampler, device, respace_type, respace_steps, cfg_scale):
     if sampler == "DDPM":
         conf_diffusion["target"] = "diffusions.DDPMCFG"
     elif sampler == "DDIM":
@@ -34,7 +37,7 @@ def build_diffuser(conf_diffusion, sampler, device, respace_steps, cfg_scale):
     diffuser = instantiate_from_config(
         conf_diffusion,
         cond_kwarg="text_embed",
-        respace_type=None if respace_steps is None else "uniform",
+        respace_type=None if respace_steps is None else respace_type,
         respace_steps=respace_steps,
         guidance_scale=cfg_scale,
         device=device,
@@ -43,7 +46,7 @@ def build_diffuser(conf_diffusion, sampler, device, respace_steps, cfg_scale):
 
 
 def main(
-        st_components, conf, weights_path, seed, sampler, respace_steps,
+        st_components, conf, weights_path, seed, sampler, respace_type, respace_steps, offset_noise,
         pos_prompt, neg_prompt, height, width, cfg_scale, batch_size, batch_count,
 ):
     # SYSTEM SETUP
@@ -55,7 +58,7 @@ def main(
 
     # BUILD DIFFUSER
     conf_diffusion = OmegaConf.to_container(conf.diffusion)
-    diffuser = build_diffuser(conf_diffusion, sampler, device, respace_steps, cfg_scale)
+    diffuser = build_diffuser(conf_diffusion, sampler, device, respace_type, respace_steps, cfg_scale)
 
     # BUILD MODEL & LOAD WEIGHTS
     conf_model = OmegaConf.to_container(conf.model)
@@ -71,6 +74,9 @@ def main(
         with torch.no_grad():
             img_shape = (4, height // 8, width // 8)
             init_noise = torch.randn((batch_size, *img_shape), device=device)
+            if offset_noise > 0.0:
+                noise = offset_noise * torch.randn((init_noise.shape[0], ), device=device)
+                init_noise = init_noise + noise[..., None, None, None]
             text_embed = model.text_encoder_encode([pos_prompt] * batch_size)
             neg_embed = model.text_encoder_encode([neg_prompt] * batch_size)
             samples = diffuser.sample(
@@ -109,7 +115,7 @@ def streamlit():
     st.title("Stable Diffusion v1.5")
 
     # CONFIG PATH
-    config_path = "./weights/stablediffusion/v1-inference.yaml"
+    config_path = os.path.join(WEIGHTS_PREFIX, "v1-inference.yaml")
     conf = OmegaConf.load(config_path)
 
     cols = st.columns(2)
@@ -148,7 +154,7 @@ def streamlit():
         # BASIC OPTIONS
         expander_basic_options = st.expander("Basic options", expanded=True)
         with expander_basic_options:
-            seed = st.number_input("Seed", min_value=-1, max_value=2**32-1, value=-1, step=1)
+            seed = st.number_input(f"Seed", min_value=-1, max_value=2**32-1, value=-1, step=1)
             if seed == -1:
                 seed = np.random.randint(0, 2**32-1)
 
@@ -173,6 +179,12 @@ def streamlit():
             with cols[1]:
                 batch_count = st.number_input("Batch count", min_value=1, value=1)
 
+        # ADVANCED OPTIONS
+        expander_advanced_options = st.expander("Advanced options", expanded=False)
+        with expander_advanced_options:
+            respace_type = st.selectbox("Respace type", options=["uniform-linspace", "uniform-leading", "uniform-trailing"])
+            offset_noise = st.slider("Offset noise", min_value=0.0, max_value=0.1, value=0.0, step=0.01)
+
     # GENERATE IMAGES
     if bttn_generate:
         main(
@@ -186,7 +198,9 @@ def streamlit():
             weights_path=weights_path,
             seed=seed,
             sampler=sampler,
+            respace_type=respace_type,
             respace_steps=respace_steps,
+            offset_noise=offset_noise,
             pos_prompt=pos_prompt,
             neg_prompt=neg_prompt,
             height=height,
