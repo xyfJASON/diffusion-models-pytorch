@@ -15,6 +15,25 @@ from utils.load import load_weights
 from utils.misc import instantiate_from_config, image_norm_to_uint8
 
 
+WEIGHTS_PREFIX = "weights"
+
+AVAILABLE_WEIGHTS = [
+    "andreas128/RePaint",
+    "ChenWu98/cycle-diffusion",
+    "jychoi118/ilvr_adm",
+    "openai/guided-diffusion/256x256_diffusion_uncond",
+    "pesser/pytorch_diffusion",
+    "xyfJASON",
+]
+
+
+def check_is_available(path):
+    for weight in AVAILABLE_WEIGHTS:
+        if weight in path:
+            return True
+    return False
+
+
 @st.cache_resource
 def build_model(conf_model, weights_path):
     build_model.clear()
@@ -115,10 +134,11 @@ def streamlit():
         extensions = ["pt", "pth", "ckpt", "safetensors"]
         weights_list = []
         for ext in extensions:
-            weights_list.extend(glob.glob(os.path.join("weights", f"**/*.{ext}"), recursive=True))
-        weights_list = [w[8:] for w in sorted(weights_list)]
+            weights_list.extend(glob.glob(os.path.join(WEIGHTS_PREFIX, f"**/*.{ext}"), recursive=True))
+        weights_list = [w[len(WEIGHTS_PREFIX)+1:] for w in sorted(weights_list)]
+        weights_list = filter(check_is_available, weights_list)
         weights_path = st.selectbox("Model", options=weights_list, index=None)
-        weights_path = os.path.join("weights", weights_path) if weights_path else None
+        weights_path = os.path.join(WEIGHTS_PREFIX, weights_path) if weights_path else None
 
     # BUTTON
     with cols[1]:

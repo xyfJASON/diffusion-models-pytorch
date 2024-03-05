@@ -4,6 +4,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import time
 import glob
+import logging
 from omegaconf import OmegaConf
 
 import torch
@@ -13,15 +14,18 @@ import streamlit as st
 from utils.load import load_weights
 from utils.misc import instantiate_from_config, image_norm_to_uint8
 
+logpy = logging.getLogger("models.sdxl.attention")
+logpy.setLevel(logging.ERROR)
 
-WEIGHTS_PREFIX = "weights/stablediffusion"
+
+WEIGHTS_PREFIX = "weights/sdxl"
 
 
 @st.cache_resource
 def build_model(conf_model, weights_path):
     build_model.clear()
     torch.cuda.empty_cache()
-    assert conf_model["target"] == "models.stablediffusion.stablediffusion.StableDiffusion"
+    assert conf_model["target"] == "models.sdxl.stablediffusion.StableDiffusion"
     model = instantiate_from_config(conf_model)
     weights = load_weights(os.path.join(WEIGHTS_PREFIX, weights_path))
     model.load_state_dict(weights)
@@ -36,7 +40,7 @@ def build_diffuser(conf_diffusion, sampler, device, respace_type, respace_steps,
         conf_diffusion["target"] = "diffusions.DDIMCFG"
     diffuser = instantiate_from_config(
         conf_diffusion,
-        cond_kwarg="text_embed",
+        cond_kwarg="condition_dict",
         respace_type=None if respace_steps is None else respace_type,
         respace_steps=respace_steps,
         guidance_scale=cfg_scale,
@@ -77,12 +81,12 @@ def main(
             if offset_noise > 0.0:
                 noise = offset_noise * torch.randn((init_noise.shape[0], ), device=device)
                 init_noise = init_noise + noise[..., None, None, None]
-            text_embed = model.text_encoder_encode([pos_prompt] * batch_size)
-            neg_embed = model.text_encoder_encode([neg_prompt] * batch_size)
+            cond_dict = model.conditioner_forward(text=[pos_prompt] * batch_size, H=height, W=width)
+            uncond_dict = model.conditioner_forward(text=[neg_prompt] * batch_size, H=height, W=width)
             samples = diffuser.sample(
                 model=model, init_noise=init_noise,
-                uncond_conditioning=neg_embed,
-                model_kwargs=dict(text_embed=text_embed),
+                uncond_conditioning=uncond_dict,
+                model_kwargs=dict(condition_dict=cond_dict),
                 tqdm_kwargs=dict(desc=f'Fold {i}/{batch_count}'),
             )
             samples = model.decode_latent(samples).clamp(-1, 1)
@@ -112,10 +116,10 @@ def streamlit():
     )
 
     # PAGE TITLE
-    st.title("Stable Diffusion v1.5")
+    st.title("Stable Diffusion XL")
 
     # CONFIG PATH
-    config_path = os.path.join(WEIGHTS_PREFIX, "v1-inference.yaml")
+    config_path = os.path.join(WEIGHTS_PREFIX, "sd_xl_base.yaml")
     conf = OmegaConf.load(config_path)
 
     cols = st.columns(2)
@@ -167,9 +171,9 @@ def streamlit():
 
             cols = st.columns(2)
             with cols[0]:
-                height = st.select_slider("Image height", options=range(128, 2048+1, 128), value=512)
+                height = st.select_slider("Image height", options=range(512, 2048+1, 128), value=1024)
             with cols[1]:
-                width = st.select_slider("Image width", options=range(128, 2048+1, 128), value=512)
+                width = st.select_slider("Image width", options=range(512, 2048+1, 128), value=1024)
 
             cfg_scale = st.slider("CFG scale", min_value=1.0, max_value=20.0, value=7.0, step=0.1)
 

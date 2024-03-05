@@ -19,25 +19,43 @@ This is a **research-oriented** repository aiming to implement and reproduce dif
 
 
 
-## Getting Started
+## Installation
 
-### Environment
+Clone this repo:
+
+```shell
+git clone https://github.com/xyfJASON/Diffusion-Models-Implementations.git
+cd Diffusion-Models-Implementations
+```
+
+Create and activate a conda environment:
 
 ```shell
 conda create -n diffusion python=3.11
 conda activate diffusion
+```
+
+Install dependencies:
+
+```shell
 pip install -r requirements.txt
 ```
 
+<br/>
 
 
-### Documentations
+
+## Documentations
 
 For instructions on training / sampling / evaluation, please refer to the [docs](./docs) folder.
 
+<br/>
 
 
-### Pretrained weights
+
+## Pretrained weights
+
+### Checkpoints and training logs
 
 All the checkpoints and training logs trained by this repository are uploaded to [huggingface](https://huggingface.co/xyfJASON/Diffusion-Models-Implementations/tree/main).
 
@@ -59,26 +77,24 @@ Training a diffusion model on a large-scale dataset from scratch is time-consumi
         <td rowspan="2">UNet by pesser</td>
         <td>CelebA-HQ</td>
         <td>256x256</td>
-        <td><a href="https://github.com/pesser/pytorch_diffusion">pesser/pytorch_diffusion</a></td>
+        <td rowspan="2"><a href="https://github.com/pesser/pytorch_diffusion">pesser/pytorch_diffusion</a></td>
         <td><a href="./weights/pesser/pytorch_diffusion/ema_diffusion_celebahq_model-560000.yaml">config</a></td>
     </tr>
     <tr>
         <td>LSUN-Church</td>
         <td>256x256</td>
-        <td><a href="https://github.com/pesser/pytorch_diffusion">pesser/pytorch_diffusion</a></td>
         <td><a href="./weights/pesser/pytorch_diffusion/ema_diffusion_lsun_church_model-4432000.yaml">config</a></td>
     </tr>
     <tr>
         <td rowspan="6">ADM by openai</td>
         <td>ImageNet (unconditional)</td>
         <td>256x256</td>
-        <td><a href="https://github.com/openai/guided-diffusion">openai/guided-diffusion</a></td>
+        <td rowspan="2"><a href="https://github.com/openai/guided-diffusion">openai/guided-diffusion</a></td>
         <td><a href="./weights/openai/guided-diffusion/256x256_diffusion_uncond.yaml">config</a></td>
     </tr>
     <tr>
         <td>ImageNet (conditional)</td>
         <td>256x256</td>
-        <td><a href="https://github.com/openai/guided-diffusion">openai/guided-diffusion</a></td>
         <td><a href="./weights/openai/guided-diffusion/256x256_diffusion.yaml">config</a></td>
     </tr>
     <tr>
@@ -90,13 +106,12 @@ Training a diffusion model on a large-scale dataset from scratch is time-consumi
     <tr>
         <td>AFHQ-Cat</td>
         <td>256x256</td>
-        <td><a href="https://github.com/ChenWu98/cycle-diffusion">ChenWu98/cycle-diffusion</a></td>
+        <td rowspan="2"><a href="https://github.com/ChenWu98/cycle-diffusion">ChenWu98/cycle-diffusion</a></td>
         <td><a href="./weights/ChenWu98/cycle-diffusion/cat_ema_0.9999_050000.yaml">config</a></td>
     </tr>
     <tr>
         <td>AFHQ-Wild</td>
         <td>256x256</td>
-        <td><a href="https://github.com/ChenWu98/cycle-diffusion">ChenWu98/cycle-diffusion</a></td>
         <td><a href="./weights/ChenWu98/cycle-diffusion/wild_ema_0.9999_050000.yaml">config</a></td>
     </tr>
     <tr>
@@ -106,17 +121,36 @@ Training a diffusion model on a large-scale dataset from scratch is time-consumi
         <td><a href="./weights/andreas128/RePaint/celeba256_250000.yaml">config</a></td>
     </tr>
     <tr>
+        <td rowspan="2">DiT by meta</td>
+        <td>ImageNet (conditional)</td>
+        <td>256x256</td>
+        <td rowspan="2"><a href="https://github.com/facebookresearch/DiT">facebookresearch/DiT</a></td>
+        <td><a href="./weights/facebookresearch/DiT/DiT-XL-2-256x256.yaml">config</a></td>
+    </tr>
+    <tr>
+        <td>ImageNet (conditional)</td>
+        <td>512x512</td>
+        <td><a href="./weights/facebookresearch/DiT/DiT-XL-2-512x512.yaml">config</a></td>
+    </tr>
+    <tr>
         <td rowspan="2">Stable Diffusion (v1.5 / v2.1)</td>
         <td>LAION</td>
         <td>512x512</td>
         <td><a href="https://github.com/runwayml/stable-diffusion">runwayml/stable-diffusion</a></td>
-        <td><a href="weights/stablediffusion/v1-inference.yaml">config</a></td>
+        <td><a href="./weights/stablediffusion/v1-inference.yaml">config</a></td>
     </tr>
     <tr>
         <td>LAION</td>
         <td>768x768</td>
         <td><a href="https://github.com/Stability-AI/stablediffusion">Stability-AI/stablediffusion</a></td>
-        <td><a href="weights/stablediffusion/v2-inference-v.yaml">config</a></td>
+        <td><a href="./weights/stablediffusion/v2-inference-v.yaml">config</a></td>
+    </tr>
+    <tr>
+        <td >Stable Diffusion XL</td>
+        <td>LAION</td>
+        <td>1024x1024</td>
+        <td><a href="https://github.com/Stability-AI/generative-models">Stability-AI/generative-models</a></td>
+        <td><a href="./weights/sdxl/sd_xl_base.yaml">config</a></td>
     </tr>
 </table>
 

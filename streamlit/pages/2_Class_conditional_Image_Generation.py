@@ -15,6 +15,22 @@ from utils.load import load_weights
 from utils.misc import instantiate_from_config, image_norm_to_uint8
 
 
+WEIGHTS_PREFIX = "weights"
+
+AVAILABLE_WEIGHTS = [
+    "facebookresearch/DiT",
+    "openai/guided-diffusion",
+    "xyfJASON",
+]
+
+
+def check_is_available(path):
+    for weight in AVAILABLE_WEIGHTS:
+        if weight in path:
+            return True
+    return False
+
+
 @st.cache_resource
 def build_model(conf_model, weights_path):
     build_model.clear()
@@ -119,10 +135,11 @@ def streamlit():
         extensions = ["pt", "pth", "ckpt", "safetensors"]
         weights_list = []
         for ext in extensions:
-            weights_list.extend(glob.glob(os.path.join("weights", f"**/*.{ext}"), recursive=True))
-        weights_list = [w[8:] for w in sorted(weights_list)]
+            weights_list.extend(glob.glob(os.path.join(WEIGHTS_PREFIX, f"**/*.{ext}"), recursive=True))
+        weights_list = [w[len(WEIGHTS_PREFIX)+1:] for w in sorted(weights_list)]
+        weights_list = filter(check_is_available, weights_list)
         weights_path = st.selectbox("Model", options=weights_list, index=None)
-        weights_path = os.path.join("weights", weights_path) if weights_path else None
+        weights_path = os.path.join(WEIGHTS_PREFIX, weights_path) if weights_path else None
 
     # LOAD CONFIG
     conf = None
