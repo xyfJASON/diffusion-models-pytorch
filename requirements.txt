@@ -15,4 +15,3 @@ safetensors~=0.4.2
 open-clip-torch
 timm~=0.9.12
 streamlit~=1.31.0
-xformers==0.0.23.post1

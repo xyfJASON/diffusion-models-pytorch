@@ -124,6 +124,10 @@ def streamlit():
        """,
         unsafe_allow_html=True,
     )
+    if st.session_state.get("pageid", None) != "Unconditional Image Generation":
+        st.cache_resource.clear()
+        torch.cuda.empty_cache()
+    st.session_state.pageid = "Unconditional Image Generation"
 
     # PAGE TITLE
     st.title("Unconditional Image Generation")

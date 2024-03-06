@@ -125,6 +125,10 @@ def streamlit():
        """,
         unsafe_allow_html=True,
     )
+    if st.session_state.get("pageid", None) != "Class-conditional Image Generation":
+        st.cache_resource.clear()
+        torch.cuda.empty_cache()
+    st.session_state.pageid = "Class-conditional Image Generation"
 
     # PAGE TITLE
     st.title("Class-conditional Image Generation")
@@ -149,7 +153,7 @@ def streamlit():
 
     # CLASS SELECTION
     with cols[1]:
-        max_value = conf.data.num_classes if conf else 1000
+        max_value = conf.data.num_classes - 1 if conf else 999
         class_label = st.number_input(f"Class label (0~{max_value})", min_value=0, max_value=max_value, value=0, step=1)
 
     # BUTTON

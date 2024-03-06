@@ -18,11 +18,11 @@ WEIGHTS_PREFIX = "weights/stablediffusion"
 
 
 @st.cache_resource
-def build_model(conf_model, weights_path):
+def build_model(conf_model, weights_path, low_vram=False):
     build_model.clear()
     torch.cuda.empty_cache()
     assert conf_model["target"] == "models.stablediffusion.stablediffusion.StableDiffusion"
-    model = instantiate_from_config(conf_model)
+    model = instantiate_from_config(conf_model, low_vram_shift_enabled=low_vram)
     weights = load_weights(os.path.join(WEIGHTS_PREFIX, weights_path))
     model.load_state_dict(weights)
     return model
@@ -47,7 +47,7 @@ def build_diffuser(conf_diffusion, sampler, device, respace_type, respace_steps,
 
 def main(
         st_components, conf, weights_path, seed, sampler, respace_type, respace_steps, offset_noise,
-        pos_prompt, neg_prompt, height, width, cfg_scale, batch_size, batch_count,
+        pos_prompt, neg_prompt, height, width, cfg_scale, batch_size, batch_count, low_vram,
 ):
     # SYSTEM SETUP
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -62,7 +62,7 @@ def main(
 
     # BUILD MODEL & LOAD WEIGHTS
     conf_model = OmegaConf.to_container(conf.model)
-    model = build_model(conf_model, weights_path)
+    model = build_model(conf_model, weights_path, low_vram)
     model.to(device).eval()
 
     # START SAMPLING
@@ -110,6 +110,10 @@ def streamlit():
        """,
         unsafe_allow_html=True,
     )
+    if st.session_state.get("pageid", None) != "Stable Diffusion v1.5":
+        st.cache_resource.clear()
+        torch.cuda.empty_cache()
+    st.session_state.pageid = "Stable Diffusion v1.5"
 
     # PAGE TITLE
     st.title("Stable Diffusion v1.5")
@@ -184,6 +188,7 @@ def streamlit():
         with expander_advanced_options:
             respace_type = st.selectbox("Respace type", options=["uniform-linspace", "uniform-leading", "uniform-trailing"])
             offset_noise = st.slider("Offset noise", min_value=0.0, max_value=0.1, value=0.0, step=0.01)
+            low_vram = st.checkbox("Low vram")
 
     # GENERATE IMAGES
     if bttn_generate:
@@ -208,6 +213,7 @@ def streamlit():
             cfg_scale=cfg_scale,
             batch_size=batch_size,
             batch_count=batch_count,
+            low_vram=low_vram,
         )
 
 

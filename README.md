@@ -41,6 +41,12 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
+Install xformers (optional but recommended):
+
+```shell
+pip install xformers==0.0.23.post1
+```
+
 <br/>
 
 
