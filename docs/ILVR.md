@@ -21,8 +21,6 @@ accelerate-launch scripts/sample_ilvr.py -c CONFIG \
                                          [--respace_steps RESPACE_STEPS] \
                                          [--downsample_factor DOWNSAMPLE_FACTOR] \
                                          [--interp_method {cubic,lanczos2,lanczos3,linear,box}] \
-                                         [--ddim] \
-                                         [--ddim_eta DDIM_ETA] \
                                          [--batch_size BATCH_SIZE]
 ```
 

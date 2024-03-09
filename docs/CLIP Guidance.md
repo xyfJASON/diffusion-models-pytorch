@@ -27,8 +27,6 @@ accelerate-launch scripts/sample_clip_guidance.py -c CONFIG \
                                                   [--respace_steps RESPACE_STEPS] \
                                                   [--guidance_weight GUIDANCE_WEIGHT] \
                                                   [--clip_model CLIP_MODEL] \
-                                                  [--ddim] \
-                                                  [--ddim_eta DDIM_ETA] \
                                                   [--batch_size BATCH_SIZE]
 ```
 

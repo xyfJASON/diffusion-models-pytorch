@@ -9,18 +9,19 @@
 This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) library for multi-GPUs/fp16 supports. Please read the [documentation](https://huggingface.co/docs/accelerate/basic_tutorials/launch#using-accelerate-launch) on how to launch the script on different platforms.
 
 ```shell
-accelerate-launch scripts/sample_ddim.py -c CONFIG \
-                                         --weights WEIGHTS \
-                                         --n_samples N_SAMPLES \
-                                         --save_dir SAVE_DIR \
-                                         [--seed SEED] \
-                                         [--ddim_eta DDIM_ETA] \
-                                         [--respace_type RESPACE_TYPE] \
-                                         [--respace_steps RESPACE_STEPS] \
-                                         [--batch_size BATCH_SIZE] \
-                                         [--mode {sample,interpolate,reconstruction}] \
-                                         [--n_interpolate N_INTERPOLATE] \
-                                         [--input_dir INPUT_DIR]
+accelerate-launch scripts/sample_uncond.py -c CONFIG \
+                                           --weights WEIGHTS \
+                                           --n_samples N_SAMPLES \
+                                           --save_dir SAVE_DIR \
+                                           --ddim \
+                                           --ddim_eta DDIM_ETA \
+                                           [--seed SEED] \
+                                           [--batch_size BATCH_SIZE] \
+                                           [--respace_type RESPACE_TYPE] \
+                                           [--respace_steps RESPACE_STEPS] \
+                                           [--mode {sample,interpolate,reconstruction}] \
+                                           [--n_interpolate N_INTERPOLATE] \
+                                           [--input_dir INPUT_DIR]
 ```
 
 Basic arguments:
@@ -29,14 +30,15 @@ Basic arguments:
 - `--weights WEIGHTS`: path to the model weights (checkpoint) file.
 - `--n_samples N_SAMPLES`: number of samples.
 - `--save_dir SAVE_DIR`: path to the directory where samples will be saved.
-
-Advanced arguments:
-
-- `--respace_steps RESPACE_STEPS`: faster sampling that uses respaced timesteps.
 - `--mode MODE`: choose a sampling mode, the options are:
   - "sample" (default): randomly sample images
   - "interpolate": sample two random images and interpolate between them. Use `--n_interpolate` to specify the number of images in between.
   - "reconstruction":  encode a real image from dataset with **DDIM inversion** (DDIM encoding), and then decode it with DDIM sampling.
+
+Advanced arguments:
+
+- `--ddim_eta`: parameter eta in DDIM sampling.
+- `--respace_steps RESPACE_STEPS`: faster sampling that uses respaced timesteps.
 - `--batch_size BATCH_SIZE`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
 
 See more details by running `python sample_ddim.py -h`.
@@ -44,8 +46,10 @@ See more details by running `python sample_ddim.py -h`.
 For example, to sample 50000 images from a pretrained CIFAR-10 model with 100 DDIM steps:
 
 ```shell
-accelerate-launch scripts/sample_ddim.py -c ./configs/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddim-cifar10 --respace_steps 100
+accelerate-launch scripts/sample_uncond.py -c ./configs/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddim-cifar10 --respace_steps 100
 ```
+
+
 
 ## Evaluation
 

@@ -35,18 +35,18 @@ accelerate-launch scripts/train_ddpm.py -c ./configs/ddpm_cifar10.yaml --diffusi
 ## Sampling
 
 ```shell
-accelerate-launch scripts/sample_ddpm.py -c CONFIG \
-                                         --weights WEIGHTS \
-                                         --n_samples N_SAMPLES \
-                                         --save_dir SAVE_DIR \
-                                         [--seed SEED] \
-                                         [--var_type VAR_TYPE] \
-                                         [--respace_type RESPACE_TYPE] \
-                                         [--respace_steps RESPACE_STEPS] \
-                                         [--batch_size BATCH_SIZE] \
-                                         [--mode {sample,denoise,progressive}] \
-                                         [--n_denoise N_DENOISE] \
-                                         [--n_progressive N_PROGRESSIVE]
+accelerate-launch scripts/sample_uncond.py -c CONFIG \
+                                           --weights WEIGHTS \
+                                           --n_samples N_SAMPLES \
+                                           --save_dir SAVE_DIR \
+                                           [--seed SEED] \
+                                           [--var_type VAR_TYPE] \
+                                           [--batch_size BATCH_SIZE] \
+                                           [--respace_type RESPACE_TYPE] \
+                                           [--respace_steps RESPACE_STEPS] \
+                                           [--mode {sample,denoise,progressive}] \
+                                           [--n_denoise N_DENOISE] \
+                                           [--n_progressive N_PROGRESSIVE]
 ```
 
 Basic arguments:
@@ -55,22 +55,23 @@ Basic arguments:
 - `--weights WEIGHTS`: path to the model weights (checkpoint) file.
 - `--n_samples N_SAMPLES`: number of samples.
 - `--save_dir SAVE_DIR`: path to the directory where samples will be saved.
-
-Advanced arguments:
-
-- `--respace_steps RESPACE_STEPS`: faster sampling that uses respaced timesteps.
 - `--mode MODE`: choose a sampling mode, the options are:
   - "sample" (default): randomly sample images
   - "denoise": sample images with visualization of its denoising process.
   - "progressive":  sample images with visualization of its progressive generation process (i.e. predicted $x_0$).
+
+Advanced arguments:
+
 - `--batch_size BATCH_SIZE`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
+- `--respace_steps RESPACE_STEPS`: faster sampling that uses respaced timesteps.
+- `--var_type VAR_TYPE`: type of variance of the reverse process.
 
 See more details by running `python sample_ddpm.py -h`.
 
 For example, to sample 50000 images from a pretrained CIFAR-10 model with 100 steps and "fixed_small" variance:
 
 ```shell
-accelerate-launch scripts/sample_ddpm.py -c ./configs/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddpm-cifar10 --respace_steps 100 --var_type fixed_small
+accelerate-launch scripts/sample_uncond.py -c ./configs/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddpm-cifar10 --respace_steps 100 --var_type fixed_small
 ```
 
 
