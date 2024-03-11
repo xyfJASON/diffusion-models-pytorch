@@ -115,11 +115,10 @@ The pretrained models are sourced from [openai/guided-diffusion](https://github.
 
 ```python
 import yaml
-import torch
-from models.openai.guided_diffusion.unet_combined import UNetCombined
+from models.adm.unet_combined import UNetCombined
 
 
-config_path = './configs/openai/guided-diffusion/256x256_diffusion.yaml'
+config_path = './weights/openai/guided-diffusion/256x256_diffusion.yaml'
 weight_cond_path = './weights/openai/guided-diffusion/256x256_diffusion.pt'
 weight_uncond_path = './weights/openai/guided-diffusion/256x256_diffusion_uncond.pt'
 save_path = './weights/openai/guided-diffusion/256x256_diffusion_combined.pt'

@@ -45,15 +45,17 @@ def build_model(conf_model, weights_path):
 
 
 @st.cache_resource
-def build_diffuser(conf_diffusion, sampler, device, var_type, respace_steps):
+def build_diffuser(conf_diffusion, sampler, device, var_type, respace_type, respace_steps):
     if sampler == "DDPM":
         conf_diffusion["target"] = "diffusions.ddpm.DDPM"
     elif sampler == "DDIM":
         conf_diffusion["target"] = "diffusions.ddim.DDIM"
+    elif sampler == "EulerDDPM":
+        conf_diffusion["target"] = "diffusions.euler_ddpm.EulerDDPMSampler"
     diffuser = instantiate_from_config(
         conf_diffusion,
         var_type=var_type or conf_diffusion["params"].get("var_type", None),
-        respace_type=None if respace_steps is None else "uniform",
+        respace_type=None if respace_steps is None else respace_type,
         respace_steps=respace_steps,
         device=device,
     )
@@ -62,7 +64,7 @@ def build_diffuser(conf_diffusion, sampler, device, var_type, respace_steps):
 
 def main(
         st_components, conf, weights_path, seed, sampler,
-        respace_steps, batch_size, batch_count, var_type,
+        respace_steps, batch_size, batch_count, var_type, respace_type,
 ):
     # SYSTEM SETUP
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -73,7 +75,7 @@ def main(
 
     # BUILD DIFFUSER
     conf_diffusion = OmegaConf.to_container(conf.diffusion)
-    diffuser = build_diffuser(conf_diffusion, sampler, device, var_type, respace_steps)
+    diffuser = build_diffuser(conf_diffusion, sampler, device, var_type, respace_type, respace_steps)
 
     # BUILD MODEL & LOAD WEIGHTS
     conf_model = OmegaConf.to_container(conf.model)
@@ -170,7 +172,7 @@ def streamlit():
 
             cols = st.columns(2)
             with cols[0]:
-                sampler = st.selectbox("Sampler", options=["DDPM", "DDIM"])
+                sampler = st.selectbox("Sampler", options=["DDPM", "DDIM", "EulerDDPM"])
             with cols[1]:
                 max_value = conf.diffusion.params.total_steps if conf else 1000
                 respace_steps = st.number_input("Sample steps", min_value=1, max_value=max_value, value=50)
@@ -188,6 +190,8 @@ def streamlit():
                 options.insert(0, options.pop(options.index(conf.diffusion.params.var_type)))
             var_type = st.selectbox("Type of variance", options=options)
 
+            respace_type = st.selectbox("Respace type", options=["uniform-linspace", "uniform-leading", "uniform-trailing"])
+
     # GENERATE IMAGES
     if bttn_generate:
         main(
@@ -203,6 +207,7 @@ def streamlit():
             batch_size=batch_size,
             batch_count=batch_count,
             var_type=var_type,
+            respace_type=respace_type,
         )
 
 

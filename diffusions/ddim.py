@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from diffusions import DDPM
+from diffusions.ddpm import DDPM
 
 
 class DDIM(DDPM):

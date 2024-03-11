@@ -19,7 +19,7 @@ WEIGHTS_PREFIX = "weights"
 
 AVAILABLE_WEIGHTS = [
     "facebookresearch/DiT",
-    "openai/guided-diffusion",
+    "openai/guided-diffusion/256x256_diffusion_combined",
     "xyfJASON",
 ]
 
@@ -42,7 +42,7 @@ def build_model(conf_model, weights_path):
 
 
 @st.cache_resource
-def build_diffuser(conf_diffusion, sampler, device, var_type, respace_steps, cfg_scale):
+def build_diffuser(conf_diffusion, sampler, device, var_type, respace_type, respace_steps, cfg_scale):
     if sampler == "DDPM":
         conf_diffusion["target"] = "diffusions.DDPMCFG"
     elif sampler == "DDIM":
@@ -50,7 +50,7 @@ def build_diffuser(conf_diffusion, sampler, device, var_type, respace_steps, cfg
     diffuser = instantiate_from_config(
         conf_diffusion,
         var_type=var_type or conf_diffusion["params"].get("var_type", None),
-        respace_type=None if respace_steps is None else "uniform",
+        respace_type=None if respace_steps is None else respace_type,
         respace_steps=respace_steps,
         guidance_scale=cfg_scale,
         cond_kwarg="y",
@@ -61,7 +61,7 @@ def build_diffuser(conf_diffusion, sampler, device, var_type, respace_steps, cfg
 
 def main(
         st_components, conf, weights_path, seed, sampler, class_label,
-        cfg_scale, respace_steps, batch_size, batch_count, var_type,
+        cfg_scale, respace_steps, batch_size, batch_count, var_type, respace_type,
 ):
     # SYSTEM SETUP
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -72,7 +72,7 @@ def main(
 
     # BUILD DIFFUSER
     conf_diffusion = OmegaConf.to_container(conf.diffusion)
-    diffuser = build_diffuser(conf_diffusion, sampler, device, var_type, respace_steps, cfg_scale)
+    diffuser = build_diffuser(conf_diffusion, sampler, device, var_type, respace_type, respace_steps, cfg_scale)
 
     # BUILD MODEL & LOAD WEIGHTS
     conf_model = OmegaConf.to_container(conf.model)
@@ -196,6 +196,8 @@ def streamlit():
                 options.insert(0, options.pop(options.index(conf.diffusion.params.var_type)))
             var_type = st.selectbox("Type of variance", options=options)
 
+            respace_type = st.selectbox("Respace type", options=["uniform-linspace", "uniform-leading", "uniform-trailing"])
+
     # GENERATE IMAGES
     if bttn_generate:
         main(
@@ -213,6 +215,7 @@ def streamlit():
             batch_size=batch_size,
             batch_count=batch_count,
             var_type=var_type,
+            respace_type=respace_type,
         )
 
 

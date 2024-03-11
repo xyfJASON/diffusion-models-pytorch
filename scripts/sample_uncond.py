@@ -19,6 +19,13 @@ from utils.load import load_weights
 from utils.misc import image_norm_to_float, instantiate_from_config, amortize
 
 
+COMPATIBLE_SAMPLER_MODE = dict(
+    ddpm=['sample', 'denoise', 'progressive'],
+    ddim=['sample', 'denoise', 'progressive', 'interpolate', 'reconstruction'],
+    euler_ddpm=['sample', 'denoise', 'progressive', 'interpolate'],
+)
+
+
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -47,6 +54,10 @@ def get_parser():
     )
     # arguments for all diffusers
     parser.add_argument(
+        '--sampler', type=str, choices=['ddpm', 'ddim', 'euler_ddpm'], default='ddpm',
+        help='Type of sampler',
+    )
+    parser.add_argument(
         '--respace_type', type=str, default='uniform',
         help='Type of respaced timestep sequence',
     )
@@ -61,16 +72,10 @@ def get_parser():
     )
     # arguments for ddim
     parser.add_argument(
-        '--ddim', action='store_true', default=False,
-        help='Use DDIM sampling',
-    )
-    parser.add_argument(
         '--ddim_eta', type=float, default=0.0,
         help='Parameter eta in DDIM sampling',
     )
-    # modes:
-    #  for ddpm: sample, denoise, progressive
-    #  for ddim: sample, denoise, progressive, interpolate, reconstruction
+    # sampling mode, see COMPATIBLE_SAMPLER_MODE
     parser.add_argument(
         '--mode', type=str, default='sample', choices=[
             'sample', 'denoise', 'progressive', 'interpolate', 'reconstruction',
@@ -130,19 +135,7 @@ def main():
     accelerator.wait_for_everyone()
 
     # BUILD DIFFUSER
-    if args.ddim:
-        diffuser = diffusions.ddim.DDIM(
-            total_steps=conf.diffusion.params.total_steps,
-            beta_schedule=conf.diffusion.params.beta_schedule,
-            beta_start=conf.diffusion.params.beta_start,
-            beta_end=conf.diffusion.params.beta_end,
-            objective=conf.diffusion.params.objective,
-            respace_type=None if args.respace_steps is None else args.respace_type,
-            respace_steps=args.respace_steps or conf.diffusion.params.total_steps,
-            eta=args.ddim_eta,
-            device=device,
-        )
-    else:
+    if args.sampler == 'ddpm':
         diffuser = diffusions.ddpm.DDPM(
             total_steps=conf.diffusion.params.total_steps,
             beta_schedule=conf.diffusion.params.beta_schedule,
@@ -154,6 +147,31 @@ def main():
             respace_steps=args.respace_steps or conf.diffusion.params.total_steps,
             device=device,
         )
+    elif args.sampler == 'ddim':
+        diffuser = diffusions.ddim.DDIM(
+            total_steps=conf.diffusion.params.total_steps,
+            beta_schedule=conf.diffusion.params.beta_schedule,
+            beta_start=conf.diffusion.params.beta_start,
+            beta_end=conf.diffusion.params.beta_end,
+            objective=conf.diffusion.params.objective,
+            respace_type=None if args.respace_steps is None else args.respace_type,
+            respace_steps=args.respace_steps or conf.diffusion.params.total_steps,
+            eta=args.ddim_eta,
+            device=device,
+        )
+    elif args.sampler == 'euler_ddpm':
+        diffuser = diffusions.euler_ddpm.EulerDDPMSampler(
+            total_steps=conf.diffusion.params.total_steps,
+            beta_schedule=conf.diffusion.params.beta_schedule,
+            beta_start=conf.diffusion.params.beta_start,
+            beta_end=conf.diffusion.params.beta_end,
+            objective=conf.diffusion.params.objective,
+            respace_type=None if args.respace_steps is None else args.respace_type,
+            respace_steps=args.respace_steps or conf.diffusion.params.total_steps,
+            device=device,
+        )
+    else:
+        raise ValueError(f'Unknown sampler: {args.sampler}')
 
     # BUILD MODEL
     model = instantiate_from_config(conf.model)
@@ -311,6 +329,13 @@ def main():
     logger.info('Start sampling...')
     os.makedirs(args.save_dir, exist_ok=True)
     logger.info(f'Samples will be saved to {args.save_dir}')
+    compatible_mode = COMPATIBLE_SAMPLER_MODE[args.sampler]
+    if args.mode not in compatible_mode:
+        logger.warning(
+            f'`{args.mode}` mode is not designed for `{args.sampler}` sampler, '
+            f'unexpected behavior may occur.'
+        )
+
     if args.mode == 'sample':
         sample()
     elif args.mode == 'denoise':
@@ -318,12 +343,8 @@ def main():
     elif args.mode == 'progressive':
         sample_progressive()
     elif args.mode == 'interpolate':
-        if conf_diffusion['target'] != 'diffusions.ddim.DDIM':
-            logger.warning(f"mode `interpolation` is designed for DDIM, get {conf_diffusion['target']}")
         sample_interpolate()
     elif args.mode == 'reconstruction':
-        if conf_diffusion['target'] != 'diffusions.ddim.DDIM':
-            logger.warning(f"mode `reconstruction` is designed for DDIM, get {conf_diffusion['target']}")
         if args.input_dir is None:
             raise ValueError('input_dir is required for mode `reconstruction`')
         sample_reconstruction()
