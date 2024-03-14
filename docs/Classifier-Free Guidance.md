@@ -37,6 +37,7 @@ accelerate-launch scripts/train_ddpm_cfg.py -c ./configs/ddpm_cfg_cifar10.yaml -
 ```shell
 accelerate-launch scripts/sample_cfg.py -c CONFIG \
                                         --weights WEIGHTS \
+                                        --sampler {ddpm,ddim} \
                                         --n_samples_each_class N_SAMPLES_EACH_CLASS \
                                         --save_dir SAVE_DIR \
                                         --guidance_scale GUIDANCE_SCALE \
@@ -53,6 +54,7 @@ Basic arguments:
 
 - `-c CONFIG`: path to the configuration file.
 - `--weights WEIGHTS`: path to the model weights (checkpoint) file.
+- `--sampler {ddpm,ddim}`: set the sampler.
 - `--n_samples_each_class N_SAMPLES_EACH_CLASS`: number of samples for each class.
 - `--save_dir SAVE_DIR`: path to the directory where samples will be saved.
 - `--guidance_scale GUIDANCE_SCALE`: the guidance scale factor $s$
@@ -64,7 +66,6 @@ Advanced arguments:
 
 - `--class_ids CLASS_IDS [CLASS_IDS ...]`: a list of class ids to sample. If not specified, all classes will be sampled.
 - `--respace_steps RESPACE_STEPS`: faster sampling that uses respaced timesteps.
-- `--ddim`: use DDIM sampling.
 - `--batch_size BATCH_SIZE`: Batch size on each process. Sample by batch is faster, so set it as large as possible to fully utilize your devices.
 
 See more details by running `python sample_cfg.py -h`.
@@ -72,7 +73,7 @@ See more details by running `python sample_cfg.py -h`.
 For example, to sample 10 images for class (0, 2, 4, 8) from a pretrained CIFAR-10 model with guidance scale 3 using 100 DDIM steps:
 
 ```shell
-accelerate-launch scripts/sample_cfg.py -c ./configs/ddpm_cfg_cifar10.yaml --weights /path/to/model/weights --n_samples_each_class 10 --save_dir ./samples/cfg-cifar10 --guidance_scale 3 --class_ids 0 2 4 8 --ddim --respace_steps 100
+accelerate-launch scripts/sample_cfg.py -c ./configs/ddpm_cfg_cifar10.yaml --weights /path/to/model/weights --sampler ddim --n_samples_each_class 10 --save_dir ./samples/cfg-cifar10 --guidance_scale 3 --class_ids 0 2 4 8 --respace_steps 100
 ```
 
 

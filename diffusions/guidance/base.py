@@ -143,13 +143,11 @@ class BaseGuidance(DDPM):
 
     def sample_loop(
             self, model: nn.Module, init_noise: Tensor,
-            var_type: str = None, clip_denoised: bool = None,
             tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
-        if tqdm_kwargs is None:
-            tqdm_kwargs = dict()
-        if model_kwargs is None:
-            model_kwargs = dict()
+        tqdm_kwargs = dict() if tqdm_kwargs is None else tqdm_kwargs
+        model_kwargs = dict() if model_kwargs is None else model_kwargs
+
         img = init_noise
         sample_seq = self.respaced_seq.tolist()
         sample_seq_prev = [-1] + self.respaced_seq[:-1].tolist()
@@ -157,7 +155,7 @@ class BaseGuidance(DDPM):
         for t, t_prev in zip(reversed(sample_seq), reversed(sample_seq_prev)):
             t_batch = torch.full((img.shape[0], ), t, device=self.device)
             model_output = model(img, t_batch, **model_kwargs)
-            out = self.p_sample(model_output, img, t, t_prev, var_type, clip_denoised)
+            out = self.denoise(model_output, img, t, t_prev)
             out = self.apply_guidance(**out, xt=img, t=t, t_prev=t_prev)  # apply guidance
             img = out['sample']
             pbar.update(1)

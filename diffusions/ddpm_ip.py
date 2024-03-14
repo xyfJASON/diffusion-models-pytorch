@@ -33,7 +33,7 @@ class DDPM_IP(DDPM):
             eps = torch.randn_like(x0)
         # input perturbation
         perturbed_eps = eps + self.gamma * torch.randn_like(eps)
-        xt = self.q_sample(x0, t, perturbed_eps)
+        xt = self.diffuse(x0, t, perturbed_eps)
         if self.objective == 'pred_eps':
             pred_eps = model(xt, t, **model_kwargs)
             return F.mse_loss(pred_eps, eps)

@@ -54,7 +54,7 @@ class MaskGuidance(BaseGuidance):
         if t == 0:
             noisy_known = self.masked_image
         else:
-            noisy_known = self.q_sample(
+            noisy_known = self.diffuse(
                 x0=self.masked_image,
                 t=torch.full((sample.shape[0], ), t_prev, device=self.device),
             )
@@ -69,15 +69,13 @@ class MaskGuidance(BaseGuidance):
 
     def resample_loop(
             self, model: nn.Module, init_noise: Tensor,
-            var_type: str = None, clip_denoised: bool = None,
             resample_r: int = 10, resample_j: int = 10,
             tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
         """Sample following RePaint paper. """
-        if tqdm_kwargs is None:
-            tqdm_kwargs = dict()
-        if model_kwargs is None:
-            model_kwargs = dict()
+        tqdm_kwargs = dict() if tqdm_kwargs is None else tqdm_kwargs
+        model_kwargs = dict() if model_kwargs is None else model_kwargs
+
         img = init_noise
         resample_seq1 = self.get_resample_seq(resample_r, resample_j)
         resample_seq2 = resample_seq1[1:] + [-1]
@@ -86,7 +84,7 @@ class MaskGuidance(BaseGuidance):
             if t1 > t2:
                 t_batch = torch.full((img.shape[0], ), t1, device=self.device, dtype=torch.long)
                 model_output = model(img, t_batch, **model_kwargs)
-                out = self.p_sample(model_output, img, t1, t2, var_type, clip_denoised)
+                out = self.denoise(model_output, img, t1, t2)
                 out = self.apply_guidance(**out, xt=img, t=t1, t_prev=t2)  # apply guidance
                 img = out['sample']
                 yield out
@@ -98,14 +96,12 @@ class MaskGuidance(BaseGuidance):
 
     def resample(
             self, model: nn.Module, init_noise: Tensor,
-            var_type: str = None, clip_denoised: bool = None,
             resample_r: int = 10, resample_j: int = 10,
             tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
         sample = None
         for out in self.resample_loop(
                 model, init_noise,
-                var_type, clip_denoised,
                 resample_r, resample_j,
                 tqdm_kwargs, model_kwargs,
         ):

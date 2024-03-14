@@ -40,7 +40,7 @@ class ILVR(BaseGuidance):
         if t == 0:
             noisy_ref_images = self.ref_images
         else:
-            noisy_ref_images = self.q_sample(
+            noisy_ref_images = self.diffuse(
                 x0=self.ref_images,
                 t=torch.full((sample.shape[0], ), t_prev, device=self.device),
             )

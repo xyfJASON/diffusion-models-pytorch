@@ -31,14 +31,6 @@ def get_parser():
         help='Path to pretrained model weights',
     )
     parser.add_argument(
-        '--respace_type', type=str, default='uniform',
-        help='Type of respaced timestep sequence',
-    )
-    parser.add_argument(
-        '--respace_steps', type=int, default=None,
-        help='Length of respaced timestep sequence',
-    )
-    parser.add_argument(
         '--guidance_scale', type=float, required=True,
         help='Guidance scale. 0 for unconditional generation, '
              '1 for non-guided generation, >1 for guided generation',
@@ -53,20 +45,35 @@ def get_parser():
         help='Number of samples in each class',
     )
     parser.add_argument(
-        '--ddim', action='store_true',
-        help='Use DDIM deterministic sampling',
-    )
-    parser.add_argument(
-        '--ddim_eta', type=float, default=0.0,
-        help='Parameter eta in DDIM sampling',
-    )
-    parser.add_argument(
         '--save_dir', type=str, required=True,
         help='Path to directory saving samples',
     )
     parser.add_argument(
         '--batch_size', type=int, default=500,
         help='Batch size on each process',
+    )
+    # arguments for all diffusers
+    parser.add_argument(
+        '--sampler', type=str, choices=['ddpm', 'ddim'], default='ddpm',
+        help='Type of sampler',
+    )
+    parser.add_argument(
+        '--respace_type', type=str, default='uniform',
+        help='Type of respaced timestep sequence',
+    )
+    parser.add_argument(
+        '--respace_steps', type=int, default=None,
+        help='Length of respaced timestep sequence',
+    )
+    # arguments for ddpm
+    parser.add_argument(
+        '--var_type', type=str, default=None,
+        help='Type of variance of the reverse process',
+    )
+    # arguments for ddim
+    parser.add_argument(
+        '--ddim_eta', type=float, default=0.0,
+        help='Parameter eta in DDIM sampling',
     )
     return parser
 
@@ -101,18 +108,34 @@ if __name__ == '__main__':
     accelerator.wait_for_everyone()
 
     # BUILD DIFFUSER
-    diffusion_params = OmegaConf.to_container(conf.diffusion.params)
-    diffusion_params.update({
-        'respace_type': None if args.respace_steps is None else args.respace_type,
-        'respace_steps': args.respace_steps,
-        'guidance_scale': args.guidance_scale,
-        'device': device,
-    })
-    if args.ddim:
-        diffusion_params.update({'eta': args.ddim_eta})
-        diffuser = diffusions.DDIMCFG(**diffusion_params)
+    if args.sampler == 'ddpm':
+        diffuser = diffusions.ddpm.DDPMCFG(
+            total_steps=conf.diffusion.params.total_steps,
+            beta_schedule=conf.diffusion.params.beta_schedule,
+            beta_start=conf.diffusion.params.beta_start,
+            beta_end=conf.diffusion.params.beta_end,
+            objective=conf.diffusion.params.objective,
+            var_type=args.var_type or conf.diffusion.params.get('var_type', None),
+            respace_type=None if args.respace_steps is None else args.respace_type,
+            respace_steps=args.respace_steps or conf.diffusion.params.total_steps,
+            device=device,
+            guidance_scale=args.guidance_scale,
+        )
+    elif args.sampler == 'ddim':
+        diffuser = diffusions.ddim.DDIMCFG(
+            total_steps=conf.diffusion.params.total_steps,
+            beta_schedule=conf.diffusion.params.beta_schedule,
+            beta_start=conf.diffusion.params.beta_start,
+            beta_end=conf.diffusion.params.beta_end,
+            objective=conf.diffusion.params.objective,
+            respace_type=None if args.respace_steps is None else args.respace_type,
+            respace_steps=args.respace_steps or conf.diffusion.params.total_steps,
+            eta=args.ddim_eta,
+            device=device,
+            guidance_scale=args.guidance_scale,
+        )
     else:
-        diffuser = diffusions.DDPMCFG(**diffusion_params)
+        raise ValueError(f'Unknown sampler: {args.sampler}')
 
     # BUILD MODEL
     model = instantiate_from_config(conf.model)

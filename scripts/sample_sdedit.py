@@ -142,7 +142,7 @@ def main():
         time_seq_prev = [-1] + time_seq[:-1]
         for i, img in enumerate(dataloader):
             img = img.float()
-            noised_img = diffuser.q_sample(x0=img, t=time_seq[-1])
+            noised_img = diffuser.diffuse(x0=img, t=time_seq[-1])
             edited_img = noised_img.clone()
             pbar = tqdm.tqdm(
                 total=len(time_seq), desc=f'Fold {i}/{len(dataloader)}',
@@ -151,7 +151,7 @@ def main():
             for t, t_prev in zip(reversed(time_seq), reversed(time_seq_prev)):
                 t_batch = torch.full((edited_img.shape[0], ), t, device=device)
                 model_output = accelerator.unwrap_model(model)(edited_img, t_batch)
-                out = diffuser.p_sample(model_output, edited_img, t, t_prev)
+                out = diffuser.denoise(model_output, edited_img, t, t_prev)
                 edited_img = out['sample']
                 pbar.update(1)
             pbar.close()

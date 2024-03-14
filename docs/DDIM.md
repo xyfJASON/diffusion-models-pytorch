@@ -11,10 +11,10 @@ This repo uses the [🤗 Accelerate](https://huggingface.co/docs/accelerate/inde
 ```shell
 accelerate-launch scripts/sample_uncond.py -c CONFIG \
                                            --weights WEIGHTS \
+                                           --sampler ddim \
+                                           --ddim_eta DDIM_ETA \
                                            --n_samples N_SAMPLES \
                                            --save_dir SAVE_DIR \
-                                           --ddim \
-                                           --ddim_eta DDIM_ETA \
                                            [--seed SEED] \
                                            [--batch_size BATCH_SIZE] \
                                            [--respace_type RESPACE_TYPE] \
@@ -28,6 +28,7 @@ Basic arguments:
 
 - `-c CONFIG`: path to the inference configuration file.
 - `--weights WEIGHTS`: path to the model weights (checkpoint) file.
+- `--sampler ddim`: set the sampler to DDIM.
 - `--n_samples N_SAMPLES`: number of samples.
 - `--save_dir SAVE_DIR`: path to the directory where samples will be saved.
 - `--mode MODE`: choose a sampling mode, the options are:
@@ -46,7 +47,7 @@ See more details by running `python sample_ddim.py -h`.
 For example, to sample 50000 images from a pretrained CIFAR-10 model with 100 DDIM steps:
 
 ```shell
-accelerate-launch scripts/sample_uncond.py -c ./configs/ddpm_cifar10.yaml --weights /path/to/model/weights --n_samples 50000 --save_dir ./samples/ddim-cifar10 --respace_steps 100
+accelerate-launch scripts/sample_uncond.py -c ./configs/ddpm_cifar10.yaml --weights /path/to/model/weights --sampler ddim --n_samples 50000 --save_dir ./samples/ddim-cifar10 --respace_steps 100
 ```
 
 

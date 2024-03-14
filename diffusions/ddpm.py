@@ -1,5 +1,6 @@
 import tqdm
-from typing import Dict
+from typing import Dict, Any
+from contextlib import contextmanager
 
 import torch
 import torch.nn as nn
@@ -29,11 +30,6 @@ class DDPM:
     ):
         """Denoising Diffusion Probabilistic Models.
 
-        The arguments can be divided into two kinds. The first kind of arguments are used in training and should be
-        kept unchanged during inference. The second kind of arguments do not affect training (although they may be
-        used for visualization during training) and can be overridden by passing arguments to sampling functions
-        during inference.
-
         Args:
             total_steps: Total number of timesteps used to train the model.
             beta_schedule: Type of beta schedule. Options: 'linear', 'quad', 'const', 'cosine'.
@@ -43,16 +39,12 @@ class DDPM:
             objective: Prediction objective of the model. Options: 'pred_eps', 'pred_x0', 'pred_v'.
 
             var_type: Type of variance of the reverse process. Options: 'fixed_large', 'fixed_small', 'learned_range'.
-             This argument doesn't affect training and can be overridden in sampling functions.
-            clip_denoised: Clip the predicted x0 in range [-1, 1]. This argument doesn't affect training and can be
-             overridden in sampling functions.
+            clip_denoised: Clip the predicted x0 in range [-1, 1].
             respace_type: Type of respaced timestep sequence. Options: 'uniform', 'uniform-leading', 'uniform-linspace',
-             'uniform-trailing', 'quad', 'none', None. This argument doesn't affect training and can be overridden in
-             `set_respaced_seq()`.
-            respace_steps: Length of respaced timestep sequence, i.e., number of sampling steps during inference. This
-             argument doesn't affect training and can be overridden in `set_respaced_seq()`.
-            respaced_seq: A 1-D Tensor of pre-defined respaced sequence. If provided, arguments `respace_*` will be
-             ignored. This argument doesn't affect training and can be overridden in `set_respaced_seq()`.
+             'uniform-trailing', 'quad', 'none', None.
+            respace_steps: Length of respaced timestep sequence, i.e., number of sampling steps during inference.
+            respaced_seq: A 1-D Tensor of pre-defined respaced sequence. If provided, `respace_type` and `respace_steps`
+             will be ignored.
 
         References:
             [1] Ho, Jonathan, Ajay Jain, and Pieter Abbeel. "Denoising diffusion probabilistic models."
@@ -128,11 +120,10 @@ class DDPM:
         return sqrt_one_minus_alphas_cumprod * xt + sqrt_alphas_cumprod_t * v
 
     def loss_func(self, model: nn.Module, x0: Tensor, t: Tensor, eps: Tensor = None, model_kwargs: Dict = None):
-        if model_kwargs is None:
-            model_kwargs = dict()
-        if eps is None:
-            eps = torch.randn_like(x0)
-        xt = self.q_sample(x0, t, eps)
+        model_kwargs = dict() if model_kwargs is None else model_kwargs
+        eps = torch.randn_like(x0) if eps is None else eps
+
+        xt = self.diffuse(x0, t, eps)
         if self.objective == 'pred_eps':
             pred_eps = model(xt, t, **model_kwargs)
             return F.mse_loss(pred_eps, eps)
@@ -158,7 +149,7 @@ class DDPM:
         v = sqrt_alphas_cumprod_t * eps - sqrt_one_minus_alphas_cumprod * x0
         return v
 
-    def q_sample(self, x0: Tensor, t: Tensor, eps: Tensor = None):
+    def diffuse(self, x0: Tensor, t: Tensor, eps: Tensor = None):
         """Sample from q(xt | x0).
 
         Args:
@@ -168,8 +159,7 @@ class DDPM:
             eps: A Tensor of shape [B, D, ...], the noise added to the original samples.
 
         """
-        if eps is None:
-            eps = torch.randn_like(x0)
+        eps = torch.randn_like(x0) if eps is None else eps
 
         sqrt_alphas_cumprod = self.alphas_cumprod[t] ** 0.5
         while sqrt_alphas_cumprod.ndim < x0.ndim:
@@ -181,10 +171,38 @@ class DDPM:
 
         return sqrt_alphas_cumprod * x0 + sqrt_one_minus_alphas_cumprod * eps
 
-    def p_sample(
-            self, model_output: Tensor, xt: Tensor, t: int, t_prev: int,
-            var_type: str = None, clip_denoised: bool = None,
-    ):
+    def predict(self, model_output: Tensor, xt: Tensor, t: int):
+        """Predict x0 or eps from model's output, i.e., x_theta(xt, t) or eps_theta(xt, t).
+
+        Args:
+            model_output: Output of the neural network.
+            xt: A Tensor of shape [B, D, ...], the noisy samples.
+            t: Current timestep.
+
+        """
+        # Process model's output
+        learned_var = None
+        if model_output.shape[1] > xt.shape[1]:
+            model_output, learned_var = torch.split(model_output, xt.shape[1], dim=1)
+
+        # Calculate the predicted x0 or eps
+        if self.objective == 'pred_eps':
+            pred_eps = model_output
+            pred_x0 = self.pred_x0_from_eps(xt, t, pred_eps)
+        elif self.objective == 'pred_x0':
+            pred_x0 = model_output
+        elif self.objective == 'pred_v':
+            pred_v = model_output
+            pred_x0 = self.pred_x0_from_v(xt, t, pred_v)
+        else:
+            raise ValueError(f'Invalid objective: {self.objective}')
+        if self.clip_denoised:
+            pred_x0.clamp_(-1., 1.)
+        pred_eps = self.pred_eps_from_x0(xt, t, pred_x0)
+
+        return {'pred_x0': pred_x0, 'pred_eps': pred_eps, 'learned_var': learned_var}
+
+    def denoise(self, model_output: Tensor, xt: Tensor, t: int, t_prev: int):
         """Sample from p_theta(x{t-1} | xt).
 
         Args:
@@ -192,14 +210,13 @@ class DDPM:
             xt: A Tensor of shape [B, D, ...], the noisy samples.
             t: Current timestep.
             t_prev: Previous timestep.
-            var_type: Override self.var_type if not None.
-            clip_denoised: Override self.clip_denoised if not None.
 
         """
-        if var_type is None:
-            var_type = self.var_type
-        if clip_denoised is None:
-            clip_denoised = self.clip_denoised
+        # Predict x0 and eps
+        predict = self.predict(model_output, xt, t)
+        pred_x0 = predict['pred_x0']
+        pred_eps = predict['pred_eps']
+        learned_var = predict['learned_var']
 
         # Prepare alphas, betas and other parameters
         alphas_cumprod_t = self.alphas_cumprod[t]
@@ -207,45 +224,20 @@ class DDPM:
         alphas_t = alphas_cumprod_t / alphas_cumprod_t_prev
         betas_t = 1. - alphas_t
 
-        # Process model's output
-        learned_var = None
-        if model_output.shape[1] > xt.shape[1]:
-            model_output, learned_var = torch.split(model_output, xt.shape[1], dim=1)
-
-        # Calculate the predicted x0
-        if self.objective == 'pred_eps':
-            pred_eps = model_output
-            pred_x0 = self.pred_x0_from_eps(xt, t, pred_eps)
-        elif self.objective == 'pred_x0':
-            pred_x0 = model_output
-            pred_eps = self.pred_eps_from_x0(xt, t, pred_x0)
-        elif self.objective == 'pred_v':
-            pred_v = model_output
-            pred_x0 = self.pred_x0_from_v(xt, t, pred_v)
-            pred_eps = self.pred_eps_from_x0(xt, t, pred_x0)
-        else:
-            raise ValueError(f'Invalid objective: {self.objective}')
-        if clip_denoised:
-            pred_x0.clamp_(-1., 1.)
-
         # Calculate the mean of p_theta(x{t-1} | xt)
         mean_coef1 = (alphas_cumprod_t_prev ** 0.5) * betas_t / (1. - alphas_cumprod_t)
         mean_coef2 = (alphas_t ** 0.5) * (1. - alphas_cumprod_t_prev) / (1. - alphas_cumprod_t)
         mean = mean_coef1 * pred_x0 + mean_coef2 * xt
 
         # Calculate the variance of p_theta(x{t-1} | xt)
-        reverse_eps = torch.randn_like(xt)
         if t == 0:
             var = torch.zeros_like(betas_t)
-            sample = mean
         else:
-            if var_type == 'fixed_small':
+            if self.var_type == 'fixed_small':
                 var = betas_t * (1. - alphas_cumprod_t_prev) / (1. - alphas_cumprod_t)
-                logvar = torch.log(var)
-            elif var_type == 'fixed_large':
+            elif self.var_type == 'fixed_large':
                 var = betas_t
-                logvar = torch.log(var)
-            elif var_type == 'learned_range':
+            elif self.var_type == 'learned_range':
                 min_var = betas_t * (1. - alphas_cumprod_t_prev) / (1. - alphas_cumprod_t)
                 min_logvar = torch.log(torch.clamp_min(min_var, 1e-20))
                 max_logvar = torch.log(betas_t)
@@ -253,8 +245,11 @@ class DDPM:
                 logvar = frac * max_logvar + (1 - frac) * min_logvar
                 var = torch.exp(logvar)
             else:
-                raise ValueError
-            sample = mean + torch.exp(0.5 * logvar) * reverse_eps
+                raise ValueError(f'Invalid var_type: {self.var_type}')
+
+        # Sample x{t-1}
+        reverse_eps = torch.randn_like(xt)
+        sample = mean if t == 0 else mean + torch.sqrt(var) * reverse_eps
 
         return {
             'sample': sample,
@@ -267,21 +262,19 @@ class DDPM:
 
     def sample_loop(
             self, model: nn.Module, init_noise: Tensor,
-            var_type: str = None, clip_denoised: bool = None,
             tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
-        if tqdm_kwargs is None:
-            tqdm_kwargs = dict()
-        if model_kwargs is None:
-            model_kwargs = dict()
+        tqdm_kwargs = dict() if tqdm_kwargs is None else tqdm_kwargs
+        model_kwargs = dict() if model_kwargs is None else model_kwargs
+
         img = init_noise
         sample_seq = self.respaced_seq.tolist()
         sample_seq_prev = [-1] + self.respaced_seq[:-1].tolist()
         pbar = tqdm.tqdm(total=len(sample_seq), **tqdm_kwargs)
         for t, t_prev in zip(reversed(sample_seq), reversed(sample_seq_prev)):
-            t_batch = torch.full((img.shape[0], ), t, device=self.device)
+            t_batch = torch.full((img.shape[0], ), t, device=self.device, dtype=torch.long)
             model_output = model(img, t_batch, **model_kwargs)
-            out = self.p_sample(model_output, img, t, t_prev, var_type, clip_denoised)
+            out = self.denoise(model_output, img, t, t_prev)
             img = out['sample']
             pbar.update(1)
             yield out
@@ -289,10 +282,87 @@ class DDPM:
 
     def sample(
             self, model: nn.Module, init_noise: Tensor,
-            var_type: str = None, clip_denoised: bool = None,
             tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
     ):
         sample = None
-        for out in self.sample_loop(model, init_noise, var_type, clip_denoised, tqdm_kwargs, model_kwargs):
+        for out in self.sample_loop(model, init_noise, tqdm_kwargs, model_kwargs):
             sample = out['sample']
         return sample
+
+
+class DDPMCFG(DDPM):
+    def __init__(self, guidance_scale: float = 1., cond_kwarg: str = 'y', *args, **kwargs):
+        """Denoising Diffusion Probabilistic Models with Classifier-Free Guidance.
+
+        Args:
+            guidance_scale: Strength of guidance. Note we actually use the definition in classifier guidance paper
+             instead of classifier-free guidance paper. Specifically, let the former be `s` and latter be `w`, then we
+             have `s=w+1`, where `s=0` means unconditional generation, `s=1` means non-guided conditional generation,
+             and `s>1` means guided conditional generation.
+            cond_kwarg: Name of the condition argument passed to model. Default to `y`.
+
+        References:
+            [1] Ho, Jonathan, Ajay Jain, and Pieter Abbeel. "Denoising diffusion probabilistic models."
+            Advances in neural information processing systems 33 (2020): 6840-6851.
+
+            [2] Ho, Jonathan, and Tim Salimans. "Classifier-free diffusion guidance." arXiv preprint
+            arXiv:2207.12598 (2022).
+
+            [3] Dhariwal, Prafulla, and Alexander Nichol. "Diffusion models beat gans on image synthesis." Advances
+            in neural information processing systems 34 (2021): 8780-8794.
+
+        """
+        super().__init__(*args, **kwargs)
+        self.guidance_scale = guidance_scale
+        self.cond_kwarg = cond_kwarg
+
+    def sample_loop(
+            self, model: nn.Module, init_noise: Tensor, uncond_conditioning: Any = None,
+            tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
+    ):
+        tqdm_kwargs = dict() if tqdm_kwargs is None else tqdm_kwargs
+
+        if self.cond_kwarg not in model_kwargs.keys():
+            raise ValueError(f'Condition argument `{self.cond_kwarg}` not found in model_kwargs.')
+        uncond_model_kwargs = model_kwargs.copy()
+        uncond_model_kwargs[self.cond_kwarg] = uncond_conditioning
+
+        img = init_noise
+        sample_seq = self.respaced_seq.tolist()
+        sample_seq_prev = [-1] + self.respaced_seq[:-1].tolist()
+        pbar = tqdm.tqdm(total=len(sample_seq), **tqdm_kwargs)
+        for t, t_prev in zip(reversed(sample_seq), reversed(sample_seq_prev)):
+            t_batch = torch.full((img.shape[0], ), t, device=self.device)
+            # conditional branch
+            model_output_cond = model(img, t_batch, **model_kwargs)
+            pred_eps_cond = self.predict(model_output_cond, img, t)['pred_eps']
+            # unconditional branch
+            model_output_uncond = model(img, t_batch, **uncond_model_kwargs)
+            pred_eps_uncond = self.predict(model_output_uncond, img, t)['pred_eps']
+            # combine
+            pred_eps = (1 - self.guidance_scale) * pred_eps_uncond + self.guidance_scale * pred_eps_cond
+            if self.var_type == 'learned_range':
+                pred_eps = torch.cat([pred_eps, model_output_cond[:, pred_eps.shape[1]:]], dim=1)
+            with self.hack_objective('pred_eps'):
+                out = self.denoise(pred_eps, img, t, t_prev)
+            img = out['sample']
+            pbar.update(1)
+            yield out
+        pbar.close()
+
+    def sample(
+            self, model: nn.Module, init_noise: Tensor, uncond_conditioning: Any = None,
+            tqdm_kwargs: Dict = None, model_kwargs: Dict = None,
+    ):
+        sample = None
+        for out in self.sample_loop(model, init_noise, uncond_conditioning, tqdm_kwargs, model_kwargs):
+            sample = out['sample']
+        return sample
+
+    @contextmanager
+    def hack_objective(self, objective: str):
+        """Hack objective temporarily."""
+        tmp = self.objective
+        self.objective = objective
+        yield
+        self.objective = tmp
