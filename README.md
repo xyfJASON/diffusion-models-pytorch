@@ -139,6 +139,13 @@ Training a diffusion model on a large-scale dataset from scratch is time-consumi
         <td><a href="./weights/facebookresearch/DiT/DiT-XL-2-512x512.yaml">config</a></td>
     </tr>
     <tr>
+        <td>MDT</td>
+        <td>ImageNet (conditional)</td>
+        <td>256x256</td>
+        <td><a href="https://github.com/sail-sg/MDT">sail-sg/MDT</a></td>
+        <td><a href="./weights/sail-sg/MDT/mdt_xl2_v2_ckpt.yaml">config</a></td>
+    </tr>
+    <tr>
         <td rowspan="2">Stable Diffusion (v1.5 / v2.1)</td>
         <td>LAION</td>
         <td>512x512</td>

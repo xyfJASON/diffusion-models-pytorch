@@ -20,6 +20,7 @@ WEIGHTS_PREFIX = "weights"
 AVAILABLE_WEIGHTS = [
     "facebookresearch/DiT",
     "openai/guided-diffusion/256x256_diffusion_combined",
+    "sail-sg/MDT",
     "xyfJASON",
 ]
 
