@@ -22,7 +22,7 @@ from utils.misc import image_norm_to_float, instantiate_from_config, amortize
 COMPATIBLE_SAMPLER_MODE = dict(
     ddpm=['sample', 'denoise', 'progressive'],
     ddim=['sample', 'denoise', 'progressive', 'interpolate', 'reconstruction'],
-    euler_ddpm=['sample', 'denoise', 'progressive', 'interpolate'],
+    euler=['sample', 'denoise', 'progressive', 'interpolate'],
 )
 
 
@@ -54,7 +54,7 @@ def get_parser():
     )
     # arguments for all diffusers
     parser.add_argument(
-        '--sampler', type=str, choices=['ddpm', 'ddim', 'euler_ddpm'], default='ddpm',
+        '--sampler', type=str, choices=['ddpm', 'ddim', 'euler'], default='ddpm',
         help='Type of sampler',
     )
     parser.add_argument(
@@ -159,8 +159,8 @@ def main():
             eta=args.ddim_eta,
             device=device,
         )
-    elif args.sampler == 'euler_ddpm':
-        diffuser = diffusions.euler_ddpm.EulerDDPMSampler(
+    elif args.sampler == 'euler':
+        diffuser = diffusions.euler.EulerSampler(
             total_steps=conf.diffusion.params.total_steps,
             beta_schedule=conf.diffusion.params.beta_schedule,
             beta_start=conf.diffusion.params.beta_start,

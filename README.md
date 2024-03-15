@@ -277,21 +277,3 @@ For more comprehensive quantitative and qualitative results, please refer to the
 <p align="center">
   <img src="./assets/ddib-imagenet.png" width=80% />
 </p>
-
-<br/>
-
-
-
-## Samplers: Fidelity-Speed Visualization
-
-Once a diffusion model is trained, we can use different samplers to generate samples. The figure below shows the trade-off between fidelity and speed of different samplers, based on the same model trained on CIFAR-10 following the standard DDPM.
-
-<p align="center">
-  <img src="./assets/fidelity-speed-visualization.png" width=80% />
-</p>
-
-Notes:
-
-- DDPM (fixed-small) is equivalent to DDIM(η=1).
-- DDPM (fixed-large) performs better than DDPM (fixed-small) with 1000 steps, but degrades drastically as the number of steps decreases. If you check on the samples from DDPM (fixed-large) (<= 100 steps), you'll find that they still contain noticeable noises.
-

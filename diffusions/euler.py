@@ -4,7 +4,7 @@ from torch import Tensor
 from diffusions.ddpm import DDPM
 
 
-class EulerDDPMSampler(DDPM):
+class EulerSampler(DDPM):
     def __init__(
             self,
             total_steps: int = 1000,
@@ -44,19 +44,22 @@ class EulerDDPMSampler(DDPM):
             **kwargs,
         )
 
+        self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod).sqrt()
+
     def denoise(self, model_output: Tensor, xt: Tensor, t: int, t_prev: int):
-        """Denoise from xt to x{t-1}."""
+        """Denoise from x_t to x_{t-1}."""
+        # Prepare parameters
+        sigmas_t = self.sigmas[t]
+        sigmas_t_prev = self.sigmas[t_prev] if t_prev >= 0 else torch.tensor(0.0)
+
         # Predict x0 and eps
         predict = self.predict(model_output, xt, t)
         pred_x0 = predict['pred_x0']
-        pred_eps = predict['pred_eps']
-
-        # Prepare parameters
-        alphas_cumprod_t = self.alphas_cumprod[t]
-        alphas_cumprod_t_prev = self.alphas_cumprod[t_prev] if t_prev >= 0 else torch.tensor(1.0)
 
         # Calculate the x{t-1}
-        derivative = 1 / (2 * alphas_cumprod_t) * (xt - pred_eps / (1 - alphas_cumprod_t).sqrt())
-        sample = xt + derivative * (alphas_cumprod_t_prev - alphas_cumprod_t)
+        bar_xt = (1 + sigmas_t ** 2).sqrt() * xt
+        derivative = (bar_xt - pred_x0) / sigmas_t
+        bar_sample = bar_xt + derivative * (sigmas_t_prev - sigmas_t)
+        sample = bar_sample / (1 + sigmas_t_prev ** 2).sqrt()
 
-        return {'sample': sample, 'pred_x0': pred_x0, 'pred_eps': pred_eps}
+        return {'sample': sample, 'pred_x0': pred_x0}
