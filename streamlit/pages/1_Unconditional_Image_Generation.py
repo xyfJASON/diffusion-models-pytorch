@@ -52,6 +52,8 @@ def build_diffuser(conf_diffusion, sampler, device, var_type, respace_type, resp
         conf_diffusion["target"] = "diffusions.ddim.DDIM"
     elif sampler == "Euler":
         conf_diffusion["target"] = "diffusions.euler.EulerSampler"
+    elif sampler == "Heun":
+        conf_diffusion["target"] = "diffusions.heun.HeunSampler"
     diffuser = instantiate_from_config(
         conf_diffusion,
         var_type=var_type or conf_diffusion["params"].get("var_type", None),
@@ -172,7 +174,7 @@ def streamlit():
 
             cols = st.columns(2)
             with cols[0]:
-                sampler = st.selectbox("Sampler", options=["DDPM", "DDIM", "Euler"])
+                sampler = st.selectbox("Sampler", options=["DDPM", "DDIM", "Euler", "Heun"])
             with cols[1]:
                 max_value = conf.diffusion.params.total_steps if conf else 1000
                 respace_steps = st.number_input("Sample steps", min_value=1, max_value=max_value, value=50)

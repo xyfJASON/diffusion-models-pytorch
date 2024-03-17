@@ -25,8 +25,9 @@ class EulerSampler(DDPM):
         """Euler sampler for DDPM-like diffusion process.
 
         References:
-            [1] Liu, Luping, Yi Ren, Zhijie Lin, and Zhou Zhao. "Pseudo numerical methods for diffusion models on
-            manifolds." arXiv preprint arXiv:2202.09778 (2022).
+            [1] Karras, Tero, Miika Aittala, Timo Aila, and Samuli Laine. "Elucidating the design space of
+            diffusion-based generative models." Advances in Neural Information Processing Systems 35 (2022):
+            26565-26577.
 
         """
         super().__init__(

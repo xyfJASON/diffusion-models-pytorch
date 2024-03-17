@@ -23,6 +23,7 @@ COMPATIBLE_SAMPLER_MODE = dict(
     ddpm=['sample', 'denoise', 'progressive'],
     ddim=['sample', 'denoise', 'progressive', 'interpolate', 'reconstruction'],
     euler=['sample', 'denoise', 'progressive', 'interpolate'],
+    heun=['sample', 'denoise', 'progressive', 'interpolate'],
 )
 
 
@@ -54,8 +55,9 @@ def get_parser():
     )
     # arguments for all diffusers
     parser.add_argument(
-        '--sampler', type=str, choices=['ddpm', 'ddim', 'euler'], default='ddpm',
-        help='Type of sampler',
+        '--sampler', type=str, choices=[
+            'ddpm', 'ddim', 'euler', 'heun',
+        ], default='ddpm', help='Type of sampler',
     )
     parser.add_argument(
         '--respace_type', type=str, default='uniform',
@@ -135,41 +137,25 @@ def main():
     accelerator.wait_for_everyone()
 
     # BUILD DIFFUSER
+    params = dict(
+        total_steps=conf.diffusion.params.total_steps,
+        beta_schedule=conf.diffusion.params.beta_schedule,
+        beta_start=conf.diffusion.params.beta_start,
+        beta_end=conf.diffusion.params.beta_end,
+        objective=conf.diffusion.params.objective,
+        respace_type=None if args.respace_steps is None else args.respace_type,
+        respace_steps=args.respace_steps or conf.diffusion.params.total_steps,
+        device=device,
+    )
     if args.sampler == 'ddpm':
-        diffuser = diffusions.ddpm.DDPM(
-            total_steps=conf.diffusion.params.total_steps,
-            beta_schedule=conf.diffusion.params.beta_schedule,
-            beta_start=conf.diffusion.params.beta_start,
-            beta_end=conf.diffusion.params.beta_end,
-            objective=conf.diffusion.params.objective,
-            var_type=args.var_type or conf.diffusion.params.get('var_type', None),
-            respace_type=None if args.respace_steps is None else args.respace_type,
-            respace_steps=args.respace_steps or conf.diffusion.params.total_steps,
-            device=device,
-        )
+        var_type = args.var_type or conf.diffusion.params.get('var_type', None)
+        diffuser = diffusions.ddpm.DDPM(var_type=var_type, **params)
     elif args.sampler == 'ddim':
-        diffuser = diffusions.ddim.DDIM(
-            total_steps=conf.diffusion.params.total_steps,
-            beta_schedule=conf.diffusion.params.beta_schedule,
-            beta_start=conf.diffusion.params.beta_start,
-            beta_end=conf.diffusion.params.beta_end,
-            objective=conf.diffusion.params.objective,
-            respace_type=None if args.respace_steps is None else args.respace_type,
-            respace_steps=args.respace_steps or conf.diffusion.params.total_steps,
-            eta=args.ddim_eta,
-            device=device,
-        )
+        diffuser = diffusions.ddim.DDIM(eta=args.ddim_eta, **params)
     elif args.sampler == 'euler':
-        diffuser = diffusions.euler.EulerSampler(
-            total_steps=conf.diffusion.params.total_steps,
-            beta_schedule=conf.diffusion.params.beta_schedule,
-            beta_start=conf.diffusion.params.beta_start,
-            beta_end=conf.diffusion.params.beta_end,
-            objective=conf.diffusion.params.objective,
-            respace_type=None if args.respace_steps is None else args.respace_type,
-            respace_steps=args.respace_steps or conf.diffusion.params.total_steps,
-            device=device,
-        )
+        diffuser = diffusions.euler.EulerSampler(**params)
+    elif args.sampler == 'heun':
+        diffuser = diffusions.heun.HeunSampler(**params)
     else:
         raise ValueError(f'Unknown sampler: {args.sampler}')
 

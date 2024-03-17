@@ -97,8 +97,8 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
     <th align="center">IS ↑</th>
   </tr>
   <tr>
-    <td align="center" rowspan="8">pred-eps</td>
-    <td align="center" rowspan="4">fixed-large</td>
+    <td align="center" rowspan="10">pred-eps</td>
+    <td align="center" rowspan="5">fixed-large</td>
     <td align="center">1000</td>
     <td align="center"><b>3.0459</b></td>
     <td align="center"><b>9.4515 ± 0.1179</b></td>
@@ -114,12 +114,17 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
     <td align="center">6.3863 ± 0.0894</td>
   </tr>
   <tr>
+    <td align="center">20</td>
+    <td align="center">183.3468</td>
+    <td align="center">2.6885 ± 0.0176</td>
+  </tr>
+  <tr>
     <td align="center">10</td>
     <td align="center">266.7540</td>
     <td align="center">1.5870 ± 0.0092</td>
   </tr>
   <tr>
-    <td align="center" rowspan="4">fixed-small</td>
+    <td align="center" rowspan="5">fixed-small</td>
     <td align="center">1000</td>
     <td align="center">5.3727</td>
     <td align="center">9.0118 ± 0.0968</td>
@@ -133,6 +138,11 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
     <td align="center">50</td>
     <td align="center">15.0471</td>
     <td align="center">8.4077 ± 0.1623</td>
+  </tr>
+  <tr>
+    <td align="center">20</td>
+    <td align="center">24.5131</td>
+    <td align="center">7.9957 ± 0.1067</td>
   </tr>
   <tr>
     <td align="center">10</td>

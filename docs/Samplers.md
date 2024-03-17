@@ -13,93 +13,165 @@ The table and figure below show the trade-off between fidelity and speed of diff
 <table align="center" width=100%>
   <tr>
     <th align="center">sampler</th>
+    <th align="center">Steps</th>
     <th align="center">NFE</th>
     <th align="center">FID ↓</th>
     <th align="center">IS ↑</th>
   </tr>
   <tr>
-    <td align="center" rowspan="4">DDPM (fixed-large)</td>
+    <td align="center" rowspan="5">DDPM (fixed-large)</td>
+    <td align="center">1000</td>
     <td align="center">1000</td>
     <td align="center"><b>3.0459</b></td>
     <td align="center"><b>9.4515 ± 0.1179</b></td>
   </tr>
   <tr>
     <td align="center">100</td>
+    <td align="center">100</td>
     <td align="center">46.5454</td>
     <td align="center">8.7223 ± 0.0923</td>
   </tr>
   <tr>
     <td align="center">50</td>
+    <td align="center">50</td>
     <td align="center">85.2221</td>
     <td align="center">6.3863 ± 0.0894</td>
   </tr>
   <tr>
+    <td align="center">20</td>
+    <td align="center">20</td>
+    <td align="center">183.3468</td>
+    <td align="center">2.6885 ± 0.0176</td>
+  </tr>
+  <tr>
+    <td align="center">10</td>
     <td align="center">10</td>
     <td align="center">266.7540</td>
     <td align="center">1.5870 ± 0.0092</td>
   </tr>
   <tr>
-    <td align="center" rowspan="4">DDPM (fixed-small)</td>
+    <td align="center" rowspan="5">DDPM (fixed-small)</td>
+    <td align="center">1000</td>
     <td align="center">1000</td>
     <td align="center">5.3727</td>
     <td align="center">9.0118 ± 0.0968</td>
   </tr>
   <tr>
     <td align="center">100</td>
+    <td align="center">100</td>
     <td align="center">11.2191</td>
     <td align="center">8.6237 ± 0.0921</td>
   </tr>
   <tr>
     <td align="center">50</td>
+    <td align="center">50</td>
     <td align="center">15.0471</td>
     <td align="center">8.4077 ± 0.1623</td>
   </tr>
   <tr>
+    <td align="center">20</td>
+    <td align="center">20</td>
+    <td align="center">24.5131</td>
+    <td align="center">7.9957 ± 0.1067</td>
+  </tr>
+  <tr>
+    <td align="center">10</td>
     <td align="center">10</td>
     <td align="center">41.0479</td>
     <td align="center">7.1373 ± 0.0801</td>
   </tr>
   <tr>
-    <td align="center" rowspan="4">DDIM (eta=0)</td>
+    <td align="center" rowspan="5">DDIM (eta=0)</td>
+    <td align="center">1000</td>
     <td align="center">1000</td>
     <td align="center">4.1892</td>
     <td align="center">9.0626 ± 0.1093</td>
   </tr>
   <tr>
     <td align="center">100</td>
+    <td align="center">100</td>
     <td align="center">6.0508</td>
     <td align="center">8.8424 ± 0.0862</td>
   </tr>
   <tr>
     <td align="center">50</td>
+    <td align="center">50</td>
     <td align="center">7.7011</td>
     <td align="center">8.7076 ± 0.1021</td>
   </tr>
   <tr>
+    <td align="center">20</td>
+    <td align="center">20</td>
+    <td align="center">11.6506</td>
+    <td align="center">8.4744 ± 0.0879</td>
+  </tr>
+  <tr>
+    <td align="center">10</td>
     <td align="center">10</td>
     <td align="center">18.9559</td>
     <td align="center">8.0852 ± 0.1137</td>
   </tr>
   <tr>
-    <td align="center" rowspan="4">Euler</td>
+    <td align="center" rowspan="5">Euler</td>
+    <td align="center">1000</td>
     <td align="center">1000</td>
     <td align="center">4.2099</td>
     <td align="center">9.0678 ± 0.1191</td>
   </tr>
   <tr>
     <td align="center">100</td>
+    <td align="center">100</td>
     <td align="center">6.0469</td>
     <td align="center">8.8511 ± 0.1054</td>
   </tr>
   <tr>
     <td align="center">50</td>
+    <td align="center">50</td>
     <td align="center">7.6770</td>
     <td align="center">8.7217 ± 0.1122</td>
   </tr>
   <tr>
+    <td align="center">20</td>
+    <td align="center">20</td>
+    <td align="center">11.6681</td>
+    <td align="center">8.4362 ± 0.1151</td>
+  </tr>
+  <tr>
+    <td align="center">10</td>
     <td align="center">10</td>
     <td align="center">18.7698</td>
     <td align="center">8.0287 ± 0.0781</td>
+  </tr>
+  <tr>
+    <td align="center" rowspan="5">Heun</td>
+    <td align="center">500</td>
+    <td align="center">999</td>
+    <td align="center">4.0046</td>
+    <td align="center">9.0509 ± 0.1475</td>
+  </tr>
+  <tr>
+    <td align="center">50</td>
+    <td align="center">99</td>
+    <td align="center">3.4687</td>
+    <td align="center">9.2595 ± 0.1323</td>
+  </tr>
+  <tr>
+    <td align="center">25</td>
+    <td align="center">49</td>
+    <td align="center">5.8767</td>
+    <td align="center">9.4325 ± 0.1308</td>
+  </tr>
+  <tr>
+    <td align="center">10</td>
+    <td align="center">19</td>
+    <td align="center">29.6088</td>
+    <td align="center">8.4687 ± 0.0864</td>
+  </tr>
+  <tr>
+    <td align="center">5</td>
+    <td align="center">9</td>
+    <td align="center">82.0586</td>
+    <td align="center">5.3521 ± 0.0646</td>
   </tr>
  </table>
 

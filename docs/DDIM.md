@@ -72,7 +72,7 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
     <th align="center">IS ↑</th>
   </tr>
   <tr>
-    <td align="center" rowspan="4">0.0</td>
+    <td align="center" rowspan="5">0.0</td>
     <td align="center">1000</td>
     <td align="center">4.1892</td>
     <td align="center">9.0626 ± 0.1093</td>
@@ -86,6 +86,11 @@ All the metrics are evaluated on 50K samples using [torch-fidelity](https://torc
     <td align="center">50 (20x faster)</td>
     <td align="center">7.7011</td>
     <td align="center">8.7076 ± 0.1021</td>
+  </tr>
+  <tr>
+    <td align="center">20 (50x faster)</td>
+    <td align="center">11.6506</td>
+    <td align="center">8.4744 ± 0.0879</td>
   </tr>
   <tr>
     <td align="center">10 (100x faster)</td>
