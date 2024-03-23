@@ -4,7 +4,7 @@ from typing import Dict
 import torch
 from torch import Tensor, nn as nn
 
-from diffusions.ddpm import DDPM
+from diffusions.ddpm import DDPM, DDPMCFG
 
 
 class HeunSampler(DDPM):
@@ -129,3 +129,8 @@ class HeunSampler(DDPM):
             pbar.update(1)
             yield out
         pbar.close()
+
+
+class HeunCFGSampler(HeunSampler, DDPMCFG):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)

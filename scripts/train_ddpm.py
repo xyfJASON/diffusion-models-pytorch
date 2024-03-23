@@ -9,6 +9,7 @@ from contextlib import nullcontext
 
 import torch
 import accelerate
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 
@@ -173,19 +174,36 @@ def main():
         _batch = _batch[0] if isinstance(_batch, (tuple, list)) else _batch
         batch_size = _batch.shape[0]
         loss_meter = AverageMeter()
+
         for i in range(0, batch_size, micro_batch):
-            X = _batch[i:i+micro_batch].float()
-            t = torch.randint(conf.diffusion.params.total_steps, (X.shape[0], ), device=device).long()
-            loss_scale = X.shape[0] / batch_size
+            x0 = _batch[i:i+micro_batch].float()
+            t = torch.randint(conf.diffusion.params.total_steps, (x0.shape[0], ), device=device).long()
+            eps = torch.randn_like(x0)
+            xt = diffuser.diffuse(x0, t, eps)
+
+            loss_scale = x0.shape[0] / batch_size
             no_sync = (i + micro_batch) < batch_size
             cm = accelerator.no_sync(model) if no_sync else nullcontext()
             with cm:
-                loss = diffuser.loss_func(model, x0=X, t=t)
+                if conf.diffusion.params.objective == 'pred_eps':
+                    pred_eps = model(xt, t)
+                    loss = F.mse_loss(pred_eps, eps)
+                elif conf.diffusion.params.objective == 'pred_x0':
+                    pred_x0 = model(xt, t)
+                    loss = F.mse_loss(pred_x0, x0)
+                elif conf.diffusion.params.objective == 'pred_v':
+                    v = diffuser.get_v(x0, eps, t)
+                    pred_v = model(xt, t)
+                    loss = F.mse_loss(pred_v, v)
+                else:
+                    raise ValueError(f'Unknown objective: {conf.diffusion.params.objective}')
                 accelerator.backward(loss * loss_scale)
-            loss_meter.update(loss.item(), X.shape[0])
+            loss_meter.update(loss.item(), x0.shape[0])
+
         accelerator.clip_grad_norm_(model.parameters(), max_norm=conf.train.clip_grad_norm)
         optimizer.step()
         ema.update(model.parameters())
+
         return dict(
             loss=loss_meter.avg,
             lr=optimizer.param_groups[0]['lr'],

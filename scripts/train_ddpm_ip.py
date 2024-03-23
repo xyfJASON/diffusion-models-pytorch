@@ -52,8 +52,7 @@ def main():
     conf = OmegaConf.merge(conf, OmegaConf.from_dotlist(unknown_args))
 
     # INITIALIZE ACCELERATOR
-    ddp_kwargs = accelerate.DistributedDataParallelKwargs(find_unused_parameters=True)
-    accelerator = accelerate.Accelerator(kwargs_handlers=[ddp_kwargs])
+    accelerator = accelerate.Accelerator()
     device = accelerator.device
     print(f'Process {accelerator.process_index} using device: {device}')
     accelerator.wait_for_everyone()
@@ -172,32 +171,30 @@ def main():
 
     def run_step(_batch):
         optimizer.zero_grad()
-        batchx, batchy = _batch
-        batch_size = batchx.shape[0]
+        _batch = _batch[0] if isinstance(_batch, (tuple, list)) else _batch
+        batch_size = _batch.shape[0]
         loss_meter = AverageMeter()
 
         for i in range(0, batch_size, micro_batch):
-            x0 = batchx[i:i+micro_batch].float()
-            y = batchy[i:i+micro_batch].long()
-            if torch.rand(1) < conf.train.p_uncond:
-                y = None
+            x0 = _batch[i:i+micro_batch].float()
             t = torch.randint(conf.diffusion.params.total_steps, (x0.shape[0], ), device=device).long()
             eps = torch.randn_like(x0)
-            xt = diffuser.diffuse(x0, t, eps)
+            perturbed_eps = eps + conf.train.ip_gamma * torch.randn_like(eps)  # input perturbation
+            xt = diffuser.diffuse(x0, t, perturbed_eps)
 
             loss_scale = x0.shape[0] / batch_size
             no_sync = (i + micro_batch) < batch_size
             cm = accelerator.no_sync(model) if no_sync else nullcontext()
             with cm:
                 if conf.diffusion.params.objective == 'pred_eps':
-                    pred_eps = model(xt, t, y=y)
+                    pred_eps = model(xt, t)
                     loss = F.mse_loss(pred_eps, eps)
                 elif conf.diffusion.params.objective == 'pred_x0':
-                    pred_x0 = model(xt, t, y=y)
+                    pred_x0 = model(xt, t)
                     loss = F.mse_loss(pred_x0, x0)
                 elif conf.diffusion.params.objective == 'pred_v':
                     v = diffuser.get_v(x0, eps, t)
-                    pred_v = model(xt, t, y=y)
+                    pred_v = model(xt, t)
                     loss = F.mse_loss(pred_v, v)
                 else:
                     raise ValueError(f'Unknown objective: {conf.diffusion.params.objective}')
@@ -217,38 +214,25 @@ def main():
     def sample(savepath: str):
         unwrapped_model = accelerator.unwrap_model(model)
         ema.apply_shadow(model.parameters())
-        # use respaced sampling to save time during training
-        diffuser.set_respaced_seq('uniform', diffuser.total_steps // 20)
-
         all_samples = []
         img_shape = (conf.data.img_channels, conf.data.params.img_size, conf.data.params.img_size)
-        mb = min(micro_batch, math.ceil(conf.train.n_samples_each_class / accelerator.num_processes))
-        for c in range(min(10, conf.data.num_classes)):
-            samples_c = []
-            folds = amortize(conf.train.n_samples_each_class, mb * accelerator.num_processes)
-            for i, bs in enumerate(folds):
-                init_noise = torch.randn((mb, *img_shape), device=device)
-                labels = torch.full((mb, ), fill_value=c, device=device)
-                samples = diffuser.sample(
-                    model=unwrapped_model,
-                    init_noise=init_noise,
-                    var_type='fixed_small',
-                    model_kwargs=dict(y=labels),
-                    tqdm_kwargs=dict(
-                        desc=f'Sampling fold {i}/{len(folds)}',
-                        leave=False, disable=not accelerator.is_main_process,
-                    ),
-                ).clamp(-1, 1)
-                samples = accelerator.gather(samples)[:bs]
-                samples_c.append(samples)
-            samples_c = torch.cat(samples_c, dim=0)
-            all_samples.append(samples_c)
-        all_samples = torch.cat(all_samples, dim=0).view(-1, *img_shape)
+        mb = min(micro_batch, math.ceil(conf.train.n_samples / accelerator.num_processes))
+        folds = amortize(conf.train.n_samples, mb * accelerator.num_processes)
+        for i, bs in enumerate(folds):
+            init_noise = torch.randn((mb, *img_shape), device=device)
+            samples = diffuser.sample(
+                model=unwrapped_model, init_noise=init_noise,
+                tqdm_kwargs=dict(
+                    desc=f'Sampling fold {i}/{len(folds)}',
+                    leave=False, disable=not accelerator.is_main_process,
+                ),
+            ).clamp(-1, 1)
+            samples = accelerator.gather(samples)[:bs]
+            all_samples.append(samples)
+        all_samples = torch.cat(all_samples, dim=0)
         if accelerator.is_main_process:
-            nrow = conf.train.n_samples_each_class
+            nrow = math.ceil(math.sqrt(conf.train.n_samples))
             save_image(all_samples, savepath, nrow=nrow, normalize=True, value_range=(-1, 1))
-
-        diffuser.set_respaced_seq('none', diffuser.total_steps)
         ema.restore(model.parameters())
 
     # START TRAINING

@@ -6,12 +6,22 @@
 
 ## Training
 
-Almost the same as DDPM (see [doc](./DDPM.md)), except using `diffusions.ddpm_ip.DDPM_IP` instead of `diffusions.ddpm.DDPM`.
+This repo uses 🤗 Accelerate library for multi-GPUs/fp16 supports. Please read the documentation for how to launch the script on different platforms.
+
+```shell
+accelerate-launch scripts/train_ddpm_ip.py -c CONFIG [-e EXP_DIR] [--key value ...]
+```
+
+Arguments:
+
+- `-c CONFIG`: path to the training configuration file.
+- `-e EXP_DIR`: results (logs, checkpoints, tensorboard, etc.) will be saved to `EXP_DIR`. Default to `runs/exp-{current time}/`.
+- `--key value`: modify configuration items in `CONFIG` via CLI.
 
 For example, to train on CIFAR-10 with default settings:
 
 ```shell
-accelerate-launch scripts/train_ddpm.py -c ./configs/ddpm_cifar10.yaml --diffusion.target diffusions.ddpm_ip.DDPM_IP
+accelerate-launch scripts/train_ddpm_ip.py -c ./configs/ddpm_ip_cifar10.yaml
 ```
 
 

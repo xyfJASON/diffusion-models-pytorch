@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor
 
-from diffusions.ddpm import DDPM
+from diffusions.ddpm import DDPM, DDPMCFG
 
 
 class EulerSampler(DDPM):
@@ -64,3 +64,8 @@ class EulerSampler(DDPM):
         sample = bar_sample / (1 + sigmas_t_prev ** 2).sqrt()
 
         return {'sample': sample, 'pred_x0': pred_x0}
+
+
+class EulerCFGSampler(EulerSampler, DDPMCFG):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)

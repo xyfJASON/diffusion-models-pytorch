@@ -5,7 +5,6 @@ from contextlib import contextmanager
 import torch
 import torch.nn as nn
 from torch import Tensor
-import torch.nn.functional as F
 
 from diffusions.schedule import get_beta_schedule, get_respaced_seq
 
@@ -118,24 +117,6 @@ class DDPM:
         sqrt_alphas_cumprod_t = self.alphas_cumprod[t] ** 0.5
         sqrt_one_minus_alphas_cumprod = (1. - self.alphas_cumprod[t]) ** 0.5
         return sqrt_one_minus_alphas_cumprod * xt + sqrt_alphas_cumprod_t * v
-
-    def loss_func(self, model: nn.Module, x0: Tensor, t: Tensor, eps: Tensor = None, model_kwargs: Dict = None):
-        model_kwargs = dict() if model_kwargs is None else model_kwargs
-        eps = torch.randn_like(x0) if eps is None else eps
-
-        xt = self.diffuse(x0, t, eps)
-        if self.objective == 'pred_eps':
-            pred_eps = model(xt, t, **model_kwargs)
-            return F.mse_loss(pred_eps, eps)
-        elif self.objective == 'pred_x0':
-            pred_x0 = model(xt, t, **model_kwargs)
-            return F.mse_loss(pred_x0, x0)
-        elif self.objective == 'pred_v':
-            v = self.get_v(x0, eps, t)
-            pred_v = model(xt, t, **model_kwargs)
-            return F.mse_loss(pred_v, v)
-        else:
-            raise ValueError(f'Objective {self.objective} is not supported.')
 
     def get_v(self, x0: Tensor, eps: Tensor, t: Tensor):
         sqrt_alphas_cumprod_t = self.alphas_cumprod[t] ** 0.5

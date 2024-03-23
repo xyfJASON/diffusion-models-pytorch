@@ -14,24 +14,22 @@ dataloader:
   prefetch_factor: 2
 
 model:
-  target: models.unet_categorial_adagn.UNetCategorialAdaGN
+  target: models.unet.UNet
   params:
     in_channels: 3
     out_channels: 3
     dim: 128
     dim_mults: [1, 2, 2, 2]
-    use_attn: [false, true, true, false]
+    use_attn: [false, true, false, false]
     num_res_blocks: 2
-    num_classes: 10
-    attn_head_dims: 64
-    resblock_updown: true
+    n_heads: 1
     dropout: 0.1
 
 diffusion:
-  target: diffusions.ddpm.DDPMCFG
+  target: diffusions.ddpm.DDPM
   params:
     total_steps: 1000
-    beta_schedule: cosine
+    beta_schedule: linear
     beta_start: 0.0001
     beta_end: 0.02
     objective: pred_eps
@@ -42,6 +40,8 @@ train:
   batch_size: 128
   micro_batch: 0
 
+  ip_gamma: 0.1  # input perturbation strength
+
   clip_grad_norm: 1.0
   ema_decay: 0.9999
   ema_gradual: true
@@ -49,11 +49,9 @@ train:
   print_freq: 400
   save_freq: 10000
   sample_freq: 5000
-  n_samples_each_class: 10
-
-  p_uncond: 0.2
+  n_samples: 64
 
   optim:
-    target: torch.optim.AdamW
+    target: torch.optim.Adam
     params:
       lr: 0.0002

@@ -5,6 +5,7 @@ import torch
 import shutil
 import datetime
 import importlib
+from omegaconf import OmegaConf, DictConfig
 
 
 def check_freq(freq: int, step: int):
@@ -68,6 +69,8 @@ def find_resume_checkpoint(exp_dir: str, resume: str):
 
 
 def instantiate_from_config(conf, **extra_params):
+    if isinstance(conf, DictConfig):
+        conf = OmegaConf.to_container(conf)
     module, cls = conf['target'].rsplit('.', 1)
     cls = getattr(importlib.import_module(module, package=None), cls)
     params = conf.get('params', dict())
